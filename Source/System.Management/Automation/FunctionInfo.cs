@@ -20,7 +20,7 @@ namespace System.Management.Automation
 
         public override ReadOnlyCollection<PSTypeName> OutputType
         {
-            get { throw new NotImplementedException(); }
+            get { return null; }
         }
 
         internal FunctionInfo(string name, ScriptBlock function, IEnumerable<ParameterAst> explicitParams)

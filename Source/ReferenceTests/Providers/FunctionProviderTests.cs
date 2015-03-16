@@ -44,6 +44,19 @@ namespace ReferenceTests.Providers
         }
 
         [Test]
+        public void ListFunctionWithGlobbingAndRelativePath()
+        {
+            string result = ReferenceHost.Execute(new string[] {
+                "function testfunc1 {}",
+                "function testfunc2 {}",
+                "Set-Location function:",
+                "Get-ChildItem testfunc* | % { $_.Name }"
+            });
+
+            Assert.AreEqual(NewlineJoin("testfunc1", "testfunc2"), result);
+        }
+
+        [Test]
         public void ListSingleFunctionWithBackslashInDriveName()
         {
             string result = ReferenceHost.Execute(new string[] {

@@ -79,7 +79,12 @@ namespace Microsoft.PowerShell.Commands
             }
         }
 
-        protected override bool HasChildItems(string path) { throw new NotImplementedException(); }
+        protected override bool HasChildItems(string path)
+        {
+            path = NormalizePath(path);
+            // we don't support multilevel hierarchy for session state items. so only the root itself has items
+            return path.Length == 0;
+        }
         protected override bool IsValidPath(string path) { throw new NotImplementedException(); }
 
         protected override bool ItemExists(string path)
