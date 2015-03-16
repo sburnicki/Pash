@@ -55,8 +55,8 @@ namespace Pash.Implementation
             _cmdlet = runtime._cmdlet;
             PassThru = runtime.PassThru;
             PSDriveInfo = runtime.PSDriveInfo;
-            Include = new Collection<string>(runtime.Include);
-            Exclude = new Collection<string>(runtime.Exclude);
+            Include = runtime.Include == null ? null : new Collection<string>(runtime.Include);
+            Exclude = runtime.Exclude == null ? null : new Collection<string>(runtime.Exclude);
             Filter = runtime.Filter;
             AvoidGlobbing = runtime.AvoidGlobbing;
             IgnoreFiltersForGlobbing = runtime.IgnoreFiltersForGlobbing;

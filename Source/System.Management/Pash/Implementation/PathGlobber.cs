@@ -29,6 +29,14 @@ namespace Pash.Implementation
             return GetGlobbedProviderPaths(path, runtime, true, out provider);
         }
 
+        internal ProviderInfo GetProviderInfo(string path, ProviderRuntime runtime)
+        {
+            ProviderInfo providerInfo;
+            // we don't care about the resolved path, just about which provider we got
+            GetProviderSpecificPath(path, runtime, out providerInfo);
+            return providerInfo;
+        }
+
         internal Collection<string> GetGlobbedProviderPaths(string path, ProviderRuntime runtime, bool itemMustExist,
                                                             out CmdletProvider provider)
         {

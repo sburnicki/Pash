@@ -530,7 +530,12 @@ namespace Microsoft.PowerShell.Commands
             {
                 return new List<string> { new System.IO.FileInfo(path).Name };
             }
-            return (from fs in directory.GetFileSystemInfos() select fs.Name).ToList();
+            return (from fs in directory.GetFileSystemInfos() where !IsHidden(fs) select fs.Name).ToList();
+        }
+
+        private bool IsHidden(System.IO.FileSystemInfo info)
+        {
+            return info.Attributes.HasFlag(System.IO.FileAttributes.Hidden);
         }
 
         private ItemType GetItemType(string type)

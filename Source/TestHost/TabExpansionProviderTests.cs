@@ -129,7 +129,7 @@ namespace TestHost
             CreateDir("bardir");
 
             CorrectSlashes(expected);
-            var expansions = _tabExp.GetFilesystemExpansions("", prefix);
+            var expansions = _tabExp.GetProviderPathExpansions("", prefix);
             expansions.ShouldEqual(expected);
         }
 
@@ -152,7 +152,7 @@ namespace TestHost
             CreateDir(".bardir", true);
 
             CorrectSlashes(expected);
-            var expansions = _tabExp.GetFilesystemExpansions("", prefix);
+            var expansions = _tabExp.GetProviderPathExpansions("", prefix);
             expansions.ShouldEqual(expected);
         }
 

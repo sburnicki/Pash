@@ -12,10 +12,15 @@ namespace Pash.Implementation
     {
         private LocalRunspace _runspace;
         private char[] _quoteChars = new char[] {'\'', '"'};
+        private PathIntrinsics _pathIntrinsics;
 
         public TabExpansionProvider(LocalRunspace runspace)
         {
             _runspace = runspace;
+            if (_runspace != null)
+            {
+                _pathIntrinsics = new PathIntrinsics(_runspace.ExecutionContext.SessionState);
+            }
         }
 
         public string[] GetAllExpansions(string cmdStart, string replacableEnd)
@@ -36,7 +41,7 @@ namespace Pash.Implementation
             }
 
             // provide expansion for files
-            expansions.AddRange(GetFilesystemExpansions(cmdStart, replacableEnd));
+            expansions.AddRange(GetProviderPathExpansions(cmdStart, replacableEnd));
 
             // last but not least, provide extension for variables
             expansions.AddRange(GetVariableExpansions(cmdStart, replacableEnd));
@@ -143,62 +148,27 @@ namespace Pash.Implementation
             return from funPair in funs orderby funPair.Key ascending select funPair.Key;
         }
 
-        public IEnumerable<string> GetFilesystemExpansions(string cmdStart, string replacableEnd)
+        private string MakeRelativePath(string path, string basePath)
         {
-            replacableEnd = StripQuotes(replacableEnd);
-
-            var p = new System.Management.Path(replacableEnd).NormalizeSlashes().ResolveTilde();
-            var startPath = new System.Management.Path(".");
-            string lookFor = replacableEnd;
-            if (p.ToString().Contains(p.CorrectSlash))
+            if (!path.StartsWith(basePath))
             {
-                // we already deal with a path
-                var escapedSlash = p.CorrectSlash;
-                if (escapedSlash.Equals(@"\"))
-                {
-                    escapedSlash = @"\\";
-                }
-                if (!p.HasDrive() && !Regex.IsMatch(p, @"^\.+" + escapedSlash))
-                {
-                    p = new System.Management.Path(".").Combine(p);
-                }
-                if (p.EndsWithSlash())
-                {
-                    startPath = p;
-                    lookFor = "";
-                }
-                else
-                {
-                    startPath = p.GetParentPath(null);
-                    lookFor = p.GetChildNameOrSelfIfNoChild();
-                }
+                return path;
             }
-            var dirinfo = new DirectoryInfo(startPath);
-            if (!dirinfo.Exists)
+            return _pathIntrinsics.Combine("." + PathIntrinsics.CorrectSlash, path.Substring(basePath.Length));
+        }
+
+        public IEnumerable<string> GetProviderPathExpansions(string cmdStart, string replacableEnd)
+        {
+            if (_pathIntrinsics == null)
             {
                 return Enumerable.Empty<string>();
             }
-            var expansions = new List<string>();
-            var pattern = new WildcardPattern(lookFor + "*");
-            bool allowHidden = lookFor.Length > 0;
-
-            // add directories
-            expansions.AddRange(
-                from subdir in dirinfo.GetDirectories()
-                where pattern.IsMatch(subdir.Name) &&
-                      (allowHidden || (subdir.Attributes & FileAttributes.Hidden) == 0)
-                orderby subdir.Name ascending
-                select QuoteIfNecessary(startPath.Combine(subdir.Name).AppendSlashAtEnd())
-            );
-            // add files
-            expansions.AddRange(
-                from file in dirinfo.GetFiles()
-                where pattern.IsMatch(file.Name) &&
-                (allowHidden || (file.Attributes & FileAttributes.Hidden) == 0)
-                orderby file.Name ascending
-                select QuoteIfNecessary(startPath.Combine(file.Name))
-            );
-            return expansions;
+            replacableEnd = StripQuotes(replacableEnd);
+            var pathIntrinsics = new PathIntrinsics(_runspace.ExecutionContext.SessionState);
+            var globbed = pathIntrinsics.GetResolvedPSPathFromPSPath(replacableEnd + "*");
+            var curPath = pathIntrinsics.CurrentLocation.Path;
+            var relatives = from p in globbed select MakeRelativePath(p.Path, curPath);
+            return from p in relatives orderby p ascending select QuoteIfNecessary(p);
         }
 
         private string QuoteIfNecessary(string str)

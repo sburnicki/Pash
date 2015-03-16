@@ -173,8 +173,7 @@ namespace System.Management.Automation
 
         internal string Combine(string parent, string child, ProviderRuntime runtime)
         {
-            ProviderInfo providerInfo;
-            parent = new PathGlobber(_sessionState).GetProviderSpecificPath(parent, runtime, out providerInfo);
+            ProviderInfo providerInfo = Globber.GetProviderInfo(parent, runtime);
             var provider = _sessionStateGlobal.Provider.GetInstance(providerInfo);
             return Combine(provider, parent, child, runtime);
         }
