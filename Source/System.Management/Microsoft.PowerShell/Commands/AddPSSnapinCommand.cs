@@ -5,6 +5,7 @@ using System;
 namespace Microsoft.PowerShell.Commands
 {
     [Cmdlet(VerbsCommon.Add, "PSSnapin")]
+    [OutputType(typeof(PSSnapInInfo))]
     public sealed class AddPSSnapinCommand : PSSnapInCommandBase
     {
         [Parameter(Position = 0, Mandatory = true, ValueFromPipelineByPropertyName = true)]
@@ -24,7 +25,7 @@ namespace Microsoft.PowerShell.Commands
             {
                 try
                 {
-                    var snapin = SessionState.SessionStateGlobal.AddPSSnapIn(curName);
+                    var snapin = SessionState.SessionStateGlobal.AddPSSnapIn(curName, ExecutionContext);
                     if (PassThru.IsPresent)
                     {
                         WriteObject(snapin);

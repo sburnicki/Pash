@@ -11,6 +11,10 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using Extensions.Reflection;
 using System.Text.RegularExpressions;
+using System.Text;
+using System.Management.Automation.Language;
+using System.Xml;
+using System.Management.Automation.Internal;
 
 namespace System.Management.Automation
 {
@@ -67,14 +71,8 @@ namespace System.Management.Automation
 
             if (_strfirst != null)
             {
-                String _strsecond = second as String;
-                if (_strsecond != null)
-                {
-                    return (0 == String.Compare(_strsecond, _strfirst, ignoreCase, formatProvider as CultureInfo));
-                }
-
-                return (0 == String.Compare(ConvertTo(second, typeof(String), formatProvider).ToString(), _strfirst, ignoreCase, formatProvider as CultureInfo));
-
+                var _strsecond = (String)ConvertTo(second, typeof(String), formatProvider);
+                return (0 == String.Compare(_strsecond, _strfirst, ignoreCase, formatProvider as CultureInfo));
             }
 
             // If all else fails, stardard object comparison
@@ -84,7 +82,7 @@ namespace System.Management.Automation
 
         #endregion
 
-        #region Conversation primitives
+        #region Conversion primitives
 
         /// <summary>
         /// Tries to convert between types.
@@ -158,7 +156,6 @@ namespace System.Management.Automation
             return true;
         }
 
-
         /// <summary>
         /// Convert between types.
         /// </summary>
@@ -187,6 +184,12 @@ namespace System.Management.Automation
                 throw new ArgumentException("Result type can not be null.");
             }
 
+            // if it's a cast to void, we want to "mute" the output. That's done by converting to null
+            if (resultType == typeof(void))
+            {
+                return AutomationNull.Value;
+            }
+
             // result is no PSObject, so unpack the value if we deal with one
             if (valueToConvert is PSObject &&
                 resultType != typeof(PSObject) &&
@@ -199,6 +202,12 @@ namespace System.Management.Automation
             if (resultType.IsArray && valueToConvert != null && resultType != valueToConvert.GetType())
             {
                 var elementType = resultType.GetElementType();
+
+                if (elementType == typeof(char) && valueToConvert is string)
+                {
+                    return ((string)valueToConvert).ToCharArray();
+                }
+
                 var enumerableValue = GetEnumerable(valueToConvert);
                 // check for simple packaging
                 // Powershell seems to neither enumerate dictionaries nor strings
@@ -208,6 +217,7 @@ namespace System.Management.Automation
                     array.SetValue(ConvertTo(valueToConvert, elementType, formatProvider), 0);
                     return array;
                 }
+
                 // otherwise we have some IEnumerable thing. recursively create a list and copy to array
                 // a list first, because we don't know the number of arguments
                 var list = (IList) Activator.CreateInstance(typeof(List<>).MakeGenericType(elementType));
@@ -235,34 +245,31 @@ namespace System.Management.Automation
                 return valueToConvert;
             }
 
-            if (resultType == typeof(String))
+            if (resultType == typeof(char))
             {
-                if (valueToConvert != null)
-                {
-                    return valueToConvert.ToString();
-                }
-                return "";
+                return ConvertToChar(valueToConvert);
+            }
+
+            if (resultType == typeof(string))
+            {
+                return ConvertToString(valueToConvert, formatProvider);
+            }
+
+            if (resultType == typeof(XmlDocument))
+            {
+                var doc = new XmlDocument();
+                doc.LoadXml(ConvertTo<string>(valueToConvert));
+                return doc;
+            }
+
+            if (resultType == typeof(Regex))
+            {
+                return new Regex(ConvertTo<string>(valueToConvert));
             }
 
             if (resultType == typeof(bool))
             {
-                if (valueToConvert == null)
-                {
-                    return false;
-                }
-                else if (valueToConvert is string)
-                {
-                    return ((string)valueToConvert).Length != 0;
-                }
-                else if (valueToConvert is Array)
-                {
-                    return ((Array)valueToConvert).Length != 0;
-                }
-                else if (valueToConvert.GetType().IsNumeric())
-                {
-                    return ((dynamic)valueToConvert) != 0;
-                }
-                return true; // any object that's not null
+                return ConvertToBool(valueToConvert);
             }
 
             if (valueToConvert != null && resultType.IsEnum) // enums have to be parsed
@@ -283,13 +290,25 @@ namespace System.Management.Automation
                 }
             }
 
-            if (resultType == typeof(SwitchParameter)) // switch parameters can simply be present
+            if (resultType == typeof(SwitchParameter))
             {
-                return new SwitchParameter(true);
+                if (valueToConvert == null)
+                {
+                    return new SwitchParameter(false);
+                }
+                else if (valueToConvert is bool)
+                {
+                    return new SwitchParameter((bool) valueToConvert);
+                }
             }
 
             object result = null;
             if (valueToConvert != null && TryConvertUsingTypeConverter(valueToConvert, resultType, out result))
+            {
+                return result;
+            }
+
+            if (valueToConvert != null && TryConvertWithConstructor(valueToConvert, resultType, out result))
             {
                 return result;
             }
@@ -300,6 +319,11 @@ namespace System.Management.Automation
              * the source type, that constructor is called to perform the conversion.
             */
             return DefaultConvertOrCast(valueToConvert, resultType);
+        }
+
+        public static T ConvertTo<T>(object valueToConvert)
+        {
+            return (T)ConvertTo(valueToConvert, typeof(T));
         }
 
         #endregion
@@ -407,8 +431,8 @@ namespace System.Management.Automation
         public static IEnumerable GetEnumerable(object obj)
         {
             obj = PSObject.Unwrap(obj);
-            // Powershell seems to exclude dictionaries and strings from being enumerables
-            if (obj is IDictionary || obj is string)
+            // Powershell seems to exclude a few types from from being enumerables
+            if (obj is IDictionary || obj is string || obj is XmlDocument)
             {
                 return null;
             }
@@ -451,10 +475,9 @@ namespace System.Management.Automation
         /// <param name="obj">The given object</param>
         /// <returns>True is it's true, false otherwise.</returns>
         public static bool IsTrue(object obj)
-        {//todo test numbers
-            return (!((obj == null) || (obj as String == String.Empty)));
+        {
+            return ConvertToBool(obj);
         }
-
         #endregion
 
         internal static bool UsualArithmeticConversion(object left, object right, out object leftConverted,
@@ -462,17 +485,20 @@ namespace System.Management.Automation
         {
             left = PSObject.Unwrap(left);
             right = PSObject.Unwrap(right);
-            Type leftType = left.GetType();
-            Type rightType = right.GetType();
             leftConverted = null;
             rightConverted = null;
             // 6.15 Usual arithmetic conversions
             // If neither operand designates a value having numeric type, then
-            if (!leftType.IsNumeric() && !rightType.IsNumeric() &&
-                !UsualArithmeticConversionOneOperand(ref left, ref right))
+            if ((
+                  left == null || right == null || // one operand is null => it needs to be converted to a number
+                  (!left.GetType().IsNumeric() && !right.GetType().IsNumeric()) // if both aren't numbers, convert
+                ) &&
+                !UsualArithmeticConversionOneOperand(ref left, ref right)) // actually convert
             {
                 return false;
             }
+            Type leftType = left.GetType();
+            Type rightType = right.GetType();
 
             // Numeric conversions:
             // Otherwise, if one operand designates a value of type float, the values designated by both operands are
@@ -508,6 +534,186 @@ namespace System.Management.Automation
             }
             // shouldn't happen as one operand should be of one of the numeric types
             return false;
+        }
+
+        private static bool ConvertToBool(object rawValue)
+        {
+            rawValue = PSObject.Unwrap(rawValue); // just make this sure
+            if (rawValue == null)
+            {
+                return false;
+            }
+            if (rawValue is bool)
+            {
+                return ((bool)rawValue);
+            }
+            else if (rawValue is string)
+            {
+                return ((string)rawValue).Length != 0;
+            }
+            else if (rawValue is IList)
+            {
+                var list = rawValue as IList;
+                if (list.Count > 1)
+                {
+                    return true;
+                }
+                else if (list.Count == 1)
+                {
+                    return ConvertToBool(list[0]);
+                }
+                else // empty list
+                {
+                    return false;
+                }
+            }
+            else if (rawValue.GetType().IsNumeric())
+            {
+                return ((dynamic)rawValue) != 0;
+            }
+            else if (rawValue is char)
+            {
+                return ((char)rawValue) != ((char)0);
+            }
+            else if (rawValue is SwitchParameter)
+            {
+                return ((SwitchParameter)rawValue).IsPresent;
+            }
+            return true; // any object that's not null
+        }
+
+        private static char ConvertToChar(object rawValue)
+        {
+            // A value of null type is converted to the character U+0000.
+            if (rawValue == null)
+            {
+                return (char)0;
+            }
+            // The conversion of a value of type bool, decimal, float, or double is in error.
+            if (rawValue is bool || rawValue is decimal || rawValue is float || rawValue is double)
+            {
+                throw new PSInvalidCastException(string.Format("Cannot convert {0} from {1} to char.", rawValue, rawValue.GetType()));
+            }
+            // An integer type value whose value can be represented in type char has that value; otherwise, the
+            // conversion is in error.
+            if (rawValue is byte || rawValue is short || rawValue is int || rawValue is long)
+            {
+                var value = Convert.ToInt64(rawValue);
+                if (value < char.MinValue || value > char.MaxValue)
+                {
+                    throw new PSInvalidCastException(string.Format("Value {0} was too large or to small for conversion to char", value));
+                }
+                return (char)value;
+            }
+            if (rawValue is ushort || rawValue is uint || rawValue is ulong)
+            {
+                var value = Convert.ToUInt64(rawValue);
+                if (value > 0xFFFF)
+                {
+                    throw new PSInvalidCastException(string.Format("Value {0} was too large for conversion to char", value));
+                }
+                return (char)value;
+            }
+            // The conversion of a string value having a length other than 1 is in error.
+            // A string value having a length 1 is converted to a char having that one character's value.
+            if (rawValue is string)
+            {
+                var s = (string)rawValue;
+                if (s.Length != 1)
+                {
+                    throw new PSInvalidCastException(string.Format("Cannot convert string of length {0} to char.", s.Length));
+                }
+                return s[0];
+            }
+            // A numeric type value whose value after rounding of any fractional part can be represented in the
+            // destination type has that rounded value; otherwise, the conversion is in error.
+            // TODO: How is this supposed to work? All floating-point types are already errors. [char]33.0 doesn't work in PowerShell either.
+
+            // For other reference type values, if the reference type supports such a conversion, that conversion is
+            // used; otherwise, the conversion is in error.
+            return Convert.ToChar(rawValue);
+        }
+
+        private static string ConvertToString(object rawValue, IFormatProvider formatProvider)
+        {
+            rawValue = PSObject.Unwrap(rawValue);
+            // A value of null type is converted to the empty string.
+            if (rawValue == null)
+            {
+                return string.Empty;
+            }
+            // The bool value $false is converted to "False"; the bool value $true is converted to "True".
+            if (rawValue is bool)
+            {
+                return (bool)rawValue ? "True" : "False";
+            }
+            // A char type value is converted to a 1-character string containing that char.
+            if (rawValue is char)
+            {
+                return new string((char)rawValue, 1);
+            }
+            // A numeric type value is converted to a string having the form of a corresponding numeric literal.
+            // However, the result has no leading or trailing spaces, no leading plus sign, integers have base 10, and
+            // there is no type suffix. For a decimal conversion, the scale is preserved. For values of -∞, +∞, and
+            // NaN, the resulting strings are "-Infinity", "Infinity", and "NaN", respectively.
+            if (rawValue is byte || rawValue is short || rawValue is int || rawValue is long)
+            {
+                return Convert.ToInt64(rawValue).ToString(formatProvider);
+            }
+            if (rawValue is decimal)
+            {
+                return ((decimal)rawValue).ToString(formatProvider);
+            }
+            if (rawValue is float)
+            {
+                return ((float)rawValue).ToString(formatProvider);
+            }
+            if (rawValue is double)
+            {
+                return ((double)rawValue).ToString(formatProvider);
+            }
+            // For an enumeration type value, the result is a string containing the name of each enumeration
+            // constant encoded in that value, separated by commas.
+            if (rawValue is Enum)
+            {
+                // Nicely enough, this is the format specified by the G format specifier. Except for the spaces
+                // after the comma. But PowerShell seems to do exactly the same.
+                return ((Enum)rawValue).ToString("G");
+            }
+            // For a 1-dimensional array, the result is a string containing the value of each element in that array, from
+            // start to end, converted to string, with elements being separated by the current Output Field
+            // Separator (§2.3.2.2). For an array having elements that are themselves arrays, only the top-level
+            // elements are converted. The string used to represent the value of an element that is an array, is
+            // implementation defined. For a multi-dimensional array, it is flattened (§9.12) and then treated as a
+            // 1-dimensional array.
+            // Windows PowerShell: For other enumerable types, the source value is treated like a 1-dimensional
+            // array.
+            IEnumerable enumerable = GetEnumerable(rawValue);
+            if (enumerable != null)
+            {
+                var runspace = Runspaces.Runspace.DefaultRunspace;
+                var ofsV = runspace.SessionStateProxy.GetVariable("OFS");
+                var ofs = ofsV != null ? ofsV.ToString() : " ";
+
+                // Linq handles flattening
+                return String.Join(ofs, from o in enumerable.Cast<object>()
+                                        select o == null ? "" : PSObject.Unwrap(o).ToString());
+            }
+            // A scriptblock type value is converted to a string containing the text of that block without the
+            // delimiting { and } characters.
+            if (rawValue is ScriptBlock)
+            {
+                var scriptBlock = (ScriptBlock)rawValue;
+                var ast = (ScriptBlockAst)scriptBlock.Ast;
+                // TODO: I would have thought ast.EndBlock.Extent.Text would suffice here, but this corresponds to only the first token in the script block
+            }
+
+            // For other reference type values, if the reference type supports such a conversion, that conversion is
+            // used; otherwise, the conversion is in error.
+            // Windows PowerShell: The string used to represent the value of an element that is an array has the
+            // form System.type[], System.type[,], and so on.
+            // Windows PowerShell: For other reference types, the method ToString is called.
+            return Convert.ToString(rawValue, formatProvider);
         }
 
         private static bool TryParseSignedHexString(string str, out object parsed)
@@ -704,7 +910,7 @@ namespace System.Management.Automation
             }
             value = value.Trim();
             var intStyle = NumberStyles.AllowExponent | NumberStyles.AllowLeadingSign | NumberStyles.AllowThousands;
-            var floatStyle = NumberStyles.AllowExponent | NumberStyles.AllowDecimalPoint;
+            var floatStyle = NumberStyles.AllowExponent | NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign;
             if (!numericType.IsNumericFloat() && value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             {
                 intStyle = NumberStyles.AllowHexSpecifier;
@@ -756,6 +962,18 @@ namespace System.Management.Automation
 
             result = null;
             return false;
+        }
+
+        private static bool TryConvertWithConstructor(object value, Type type, out object result)
+        {
+            result = null;
+            var constructor = type.GetConstructor(new Type[] { value.GetType() });
+            if (constructor == null)
+            {
+                return false;
+            }
+            result = constructor.Invoke(new object[] { value });
+            return true;
         }
 
         private static object DefaultConvertOrCast(object value, Type type)

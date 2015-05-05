@@ -23,6 +23,7 @@ namespace System.Management.Automation
         public bool ValueFromPipeline { get; private set; }
         public bool ValueFromPipelineByPropertyName { get; private set; }
         public bool ValueFromRemainingArguments { get; private set; }
+        internal ReadOnlyCollection<ArgumentTransformationAttribute> TransformationAttributes { get; private set; }
 
         internal MemberInfo MemberInfo { get; private set; }
 
@@ -42,7 +43,7 @@ namespace System.Management.Automation
             attributes.Add(paramAttr);
 
             // Reflect Aliases from field/property
-            AliasAttribute aliasAttr = (AliasAttribute)info.GetCustomAttributes(false).Where(i => i is AliasAttribute).FirstOrDefault();
+            AliasAttribute aliasAttr = (AliasAttribute)info.GetCustomAttributes(false).FirstOrDefault(i => i is AliasAttribute);
             if (aliasAttr != null)
             {
                 List<string> aliases = new List<string>(aliasAttr.AliasNames);
@@ -53,6 +54,9 @@ namespace System.Management.Automation
             {
                 Aliases = new ReadOnlyCollection<string>(new List<string>());
             }
+
+            var transformationAttrs = info.GetCustomAttributes(true).OfType<ArgumentTransformationAttribute>().ToList();
+            TransformationAttributes = new ReadOnlyCollection<ArgumentTransformationAttribute>(transformationAttrs);
 
             Attributes = new ReadOnlyCollection<Attribute>(attributes);
         }
@@ -68,12 +72,16 @@ namespace System.Management.Automation
 
         public override bool Equals(object obj)
         {
-            var otherParamInfo = obj as CommandParameterInfo;
-            if (obj == null)
+            if (obj == null || !(obj is CommandParameterInfo))
             {
-                throw new ArgumentException("Equality check with null or different obejct type");
+                return false;
             }
-            return Equals(otherParamInfo);
+            if (Object.ReferenceEquals(this, obj))
+            {
+                return true;
+            }
+            var other = (CommandParameterInfo) obj;
+            return Name.Equals(other.Name) && ParameterType.Equals(other.ParameterType);
         }
 
         public override string ToString()

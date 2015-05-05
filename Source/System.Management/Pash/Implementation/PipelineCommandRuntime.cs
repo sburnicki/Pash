@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using Pash.Implementation;
+using System.Management.Automation.Internal;
 
 namespace System.Management.Automation
 {
@@ -77,11 +78,7 @@ namespace System.Management.Automation
 
         public void ThrowTerminatingError(ErrorRecord errorRecord)
         {
-            if (errorRecord.Exception != null)
-            {
-                throw errorRecord.Exception;
-            }
-            throw new InvalidOperationException(errorRecord.ToString());
+            throw new CmdletInvocationException(errorRecord);
         }
 
         public void WriteCommandDetail(string text)
@@ -107,6 +104,11 @@ namespace System.Management.Automation
 
         public void WriteObject(object sendToPipeline)
         {
+            // AutomationNull.Value is never written to stream, it's like "void"
+            if (sendToPipeline == AutomationNull.Value)
+            {
+                return;
+            }
             OutputStream.Write(PSObject.WrapOrNull(sendToPipeline));
         }
 
@@ -137,10 +139,12 @@ namespace System.Management.Automation
 
         public void WriteVerbose(string text)
         {
+            ExecutionContext.LocalHost.UI.WriteVerboseLine(text);
         }
 
         public void WriteWarning(string text)
         {
+            ExecutionContext.LocalHost.UI.WriteWarningLine(text);
         }
 
         #endregion

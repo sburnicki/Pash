@@ -125,8 +125,6 @@ namespace Pash.Implementation
                 Input.Write(null);
             }
 
-            string errorId = "BuildingPipelineProcessorFailed";
-
             ExecutionContext context = _runspace.ExecutionContext.Clone();
             RerouteExecutionContext(context);
             try
@@ -142,31 +140,31 @@ namespace Pash.Implementation
                 _runspace.AddRunningPipeline(this);
                 SetPipelineState(PipelineState.Running);
 
-                errorId = "TerminatingError";
                 pipelineProcessor.Execute(context);
                 SetPipelineState(PipelineState.Completed);
             }
-            catch (ExitException ex)
+            catch (FlowControlException ex)
             {
-                // Toplevel pipeline
-                if (!IsNested)
+                if (IsNested)
                 {
-                    _runspace.PSHost.SetShouldExit(ex.ExitCode);
+                    throw; // propagate to parent levels
                 }
-                else
+                if (ex is ExitException)
                 {
-                    // nested pipelines propagate the exit command
-                    throw;
+                    // exit code must be an int. otherwise it's 0
+                    int exitCode = 0;
+                    LanguagePrimitives.TryConvertTo<int>(((ExitException)ex).Argument, out exitCode);
+                    _runspace.PSHost.SetShouldExit(exitCode);
                 }
+                // at this point we are in the toplevel pipeline and we got a "return", "break", or "continue".
+                // The behavior for this is that the pipeline stops (that's why we're here), but nothing else
             }
             catch (Exception ex)
             {
                 // in case of throw statement, parse error, or "ThrowTerminatingError"
-                // just add to error variable and rethrow that thing
-                var errorRecord = (ex is IContainsErrorRecord) ?
-                    ((IContainsErrorRecord) ex).ErrorRecord : new ErrorRecord(ex, errorId, ErrorCategory.InvalidOperation, null);
-                context.AddToErrorVariable(errorRecord);
-                context.SetVariable("global:?", false); // last command was definitely not successfull
+                // just add to error variable, the error stream and rethrow that thing
+                context.AddToErrorVariable(ex);
+                context.SetSuccessVariable(false); // last command was definitely not successfull
                 throw;
             }
             _runspace.RemoveRunningPipeline(this);

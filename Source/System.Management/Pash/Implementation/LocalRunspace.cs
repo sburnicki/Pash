@@ -198,7 +198,17 @@ namespace Pash.Implementation
 
             AddInitialSessionVariables();
             AddInitialSessionCommands();
-            CommandManager.ImportModules(_initialSessionState.Modules);
+            AddInitialSessionModules();
+        }
+
+        void AddInitialSessionModules()
+        {
+            var moduleLoader = new ModuleLoader(ExecutionContext);
+            foreach (var mod in _initialSessionState.Modules)
+            {
+                // Is it correct that ModuleSpecification.Name can be a path? Well, we use it like this for now.
+                moduleLoader.LoadModuleByName(mod.Name, true);
+            }
         }
 
         private void AddInitialSessionCommands()
@@ -216,8 +226,8 @@ namespace Pash.Implementation
                 else if (cmdEntry is SessionStateFunctionEntry)
                 {
                     var funEntry = (SessionStateFunctionEntry)cmdEntry;
-                    var scriptBlock = new ScriptBlock(CommandManager.ParseInput(funEntry.Definition));
-                    var funInfo = new FunctionInfo(funEntry.Name, scriptBlock, funEntry.Options);
+                    var scriptBlock = new ScriptBlock(Parser.ParseInput(funEntry.Definition));
+                    var funInfo = new FunctionInfo(funEntry.Name, scriptBlock, null, funEntry.Options);
                     ExecutionContext.SessionState.Function.Set(funInfo);
                 }
             }

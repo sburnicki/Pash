@@ -1,6 +1,7 @@
 ﻿// Copyright (C) Pash Contributors. License: GPL/BSD. See https://github.com/Pash-Project/Pash/
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Management.Automation.Host;
 using System.Collections.ObjectModel;
@@ -11,7 +12,20 @@ namespace System.Management.Automation.Provider
 {
     public abstract class CmdletProvider : IResourceSupplier
     {
-        internal ProviderRuntime ProviderRuntime { get; set; }
+        private ProviderRuntime _providerRuntime;
+        internal ProviderRuntime ProviderRuntime
+        {
+            get
+            {
+                return _providerRuntime;
+            }
+
+            set
+            {
+                VerifyProviderCapabilities(value);
+                _providerRuntime = value;
+            }
+        }
 
         // TODO: use CmdletProviderManagementIntrinsics
 
@@ -44,6 +58,16 @@ namespace System.Management.Automation.Provider
                 return ProviderRuntime.Force;
             }
         }
+
+        protected PSDriveInfo PSDriveInfo
+        {
+            get
+            {
+                // somehow we must return null if the drive is just a dummy drive...
+                return ProviderRuntime.PSDriveInfo;
+            }
+        }
+
         public PSHost Host { get; private set; }
         public Collection<string> Include
         {
@@ -55,15 +79,14 @@ namespace System.Management.Automation.Provider
 
         public CommandInvocationIntrinsics InvokeCommand { get; private set; }
         public ProviderIntrinsics InvokeProvider { get; private set; }
-        protected internal ProviderInfo ProviderInfo { get; private set; }
-        protected PSDriveInfo PSDriveInfo { get; private set; }
+        protected ProviderInfo ProviderInfo { get; private set; }
         public bool Stopping { get; private set; }
 
         public SessionState SessionState
         {
             get
             {
-                return this.ProviderRuntime.ExecutionContext.SessionState;
+                return ProviderRuntime.SessionState;
             }
         }
 
@@ -92,15 +115,18 @@ namespace System.Management.Automation.Provider
         protected virtual object StartDynamicParameters() { throw new NotImplementedException(); }
 
 
-        //TODO: simple wrapper to call Stop() from outisde. Should be replaced at any time for something more meaningful
-        internal void DoStop()
-        {
-            Stop();
-        }
         protected virtual void Stop()
         {
             //TODO: useful default implementation?
         }
+
+        internal void Stop(ProviderRuntime providerRuntime)
+        {
+            ProviderRuntime = providerRuntime;
+            Stop();
+        }
+
+
         protected internal virtual void StopProcessing() { throw new NotImplementedException(); }
         public void ThrowTerminatingError(ErrorRecord errorRecord) { throw new NotImplementedException(); }
         public void WriteDebug(string text) { throw new NotImplementedException(); }
@@ -109,7 +135,7 @@ namespace System.Management.Automation.Provider
             ProviderRuntime.WriteError(errorRecord);
         }
 
-        public void WriteItemObject(object item, Path path, bool isContainer)
+        public void WriteItemObject(object item, string path, bool isContainer)
         {
             PSObject psObject = GetItemAsPSObject(item, path);
             PSNoteProperty member = new PSNoteProperty("PSIsContainer", isContainer);
@@ -135,6 +161,20 @@ namespace System.Management.Automation.Provider
         internal void SetProviderInfo(ProviderInfo providerInfo)
         {
             ProviderInfo = providerInfo;
+        }
+
+        internal static T As<T>(object provider)
+        {
+            VerifyType<T>(provider);
+            return ((T) provider);
+        }
+
+        internal static void VerifyType<T>(object provider)
+        {
+            if (!(provider is T))
+            {
+                throw new NotSupportedException("The provider is not a valid provider of type '" + typeof(T).Name + "'");
+            }
         }
 
         private PSObject GetItemAsPSObject(object item, Path path)
@@ -194,6 +234,38 @@ namespace System.Management.Automation.Provider
 
             psObject.Properties.Add(new PSNoteProperty("PSProvider", ProviderInfo));
             return psObject;
+        }
+
+
+        private void VerifyProviderCapabilities(ProviderRuntime runtime)
+        {
+            if (!String.IsNullOrEmpty(runtime.Filter) &&
+                !ProviderInfo.Capabilities.HasFlag(ProviderCapabilities.Filter))
+            {
+                throw new NotSupportedException("This provider doesn't support filters");
+            }
+            if (runtime.Credential != null &&
+                !ProviderInfo.Capabilities.HasFlag(ProviderCapabilities.Credentials))
+            {
+                throw new NotSupportedException("This provider doesn't support credentials");
+            }
+        }
+
+        internal Collection<PSDriveInfo> GetDriveFromProviderInfo()
+        {
+            var drives = new Collection<PSDriveInfo>();
+
+            string providerName = GetType().GetCustomAttributes(typeof(CmdletProviderAttribute), true)
+                .OfType<CmdletProviderAttribute>()
+                .Select(attribute => attribute.ProviderName)
+                .FirstOrDefault();
+
+            if (!String.IsNullOrEmpty(providerName))
+            {
+                var drive = new PSDriveInfo(ProviderInfo.Name, ProviderInfo, string.Empty, string.Empty, null);
+                drives.Add(drive);
+            }
+            return drives;
         }
     }
 }

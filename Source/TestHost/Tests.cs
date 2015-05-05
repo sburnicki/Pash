@@ -86,6 +86,10 @@ namespace TestHost
         [TestCase(@"1 -eq 2", "False")]
         [TestCase(@"'abc' -eq 'abc'", "True")]
         [TestCase(@"'abc' -eq 'ghi'", "False")]
+        [TestCase(@"'abc' -ceq 'abc'", "True")]
+        [TestCase(@"'abc' -ceq 'Abc'", "False")]
+        [TestCase(@"'abc' -cne 'Abc'", "True")]
+        [TestCase(@"'abc' -cne 'abc'", "False")]
         [TestCase(@"$true -eq $true", "True")]
         [TestCase(@"$true -eq $false", "False")]
         [TestCase(@"$test = $null; $test -eq $null", "True")]
@@ -216,38 +220,6 @@ namespace TestHost
         }
 
         [Test]
-        public void Ranges()
-        {
-            //// 7.4 Range operator
-            //// Examples:
-            //// 
-            ////     1..10              # ascending range 1..10
-            {
-                var result = TestHost.Execute("1..10");
-
-                var expected = Enumerable.Range(1, 10).JoinString(Environment.NewLine) + Environment.NewLine;
-
-                Assert.AreEqual(expected, result);
-            }
-
-            //CollectionAssert.AreEqual(new[] { 3, 2, 1 }, (int[])TestHost.Execute("3..1"));
-
-            //////    -500..-495          # descending range -500..-495
-            //CollectionAssert.AreEqual(new[] { -500, -499, -498, -497, -496, -495 }, (int[])TestHost.Execute("-500..-495"));
-
-            //////     16..16             # seqeunce of 1
-            //CollectionAssert.AreEqual(new[] { 16 }, (int[])TestHost.Execute("16..16"));
-
-            ////     
-            ////     $x = 1.5
-            ////     $x..5.40D          # ascending range 2..5
-            ////     
-            ////     $true..3           # ascending range 1..3
-            ////     -2..$null          # ascending range -2..0
-            ////    "0xf".."0xa"        # descending range 15..10           
-        }
-
-        [Test]
         public void SequenceInPipeline()
         {
             //// 7.4 Range operator
@@ -320,27 +292,6 @@ namespace TestHost
                 "11" + Environment.NewLine,
                 result
             );
-        }
-
-        [Test]
-        [TestCase(@"$x++ ; $x", "2")]
-        [TestCase(@"$x++ ; $x++ ; $x", "3")]
-        [TestCase(@"$y = $x++ ; $y", "1")]
-
-        [TestCase(@"++$x ; $x", "2")]
-        [TestCase(@"(++$x)", "2")]
-        [TestCase(@"$y = ++$x ; $y", "2")]
-        public void IncrementDecrement(string input, string expected)
-        {
-            var result = TestHost.Execute(
-                "$x = 1",
-                input
-                );
-
-            Assert.AreEqual(
-                expected + Environment.NewLine,
-                result
-                );
         }
 
         [TestFixture]
@@ -418,63 +369,6 @@ namespace TestHost
             var result = TestHost.Execute("[Text.RegularExpressions.Regex]::IsMatch('FOO', 'foo', [Text.RegularExpressions.RegexOptions] 'IgnoreCase' )");
 
             Assert.AreEqual("True" + Environment.NewLine, result);
-        }
-
-        [Test]
-        public void For()
-        {
-            var result = TestHost.Execute("for ($i = 0; $i -ile 10; $i++) { $i }");
-
-            Assert.AreEqual(Enumerable.Range(0, 11).JoinString(Environment.NewLine) + Environment.NewLine, result);
-        }
-
-        [Test]
-        public void While()
-        {
-            /* Should behave exactly like the for-loop */
-            var result = TestHost.Execute("$i = 0; while ($i -ile 10) { $i; $i++ }");
-
-            Assert.AreEqual(Enumerable.Range(0, 11).JoinString(Environment.NewLine) + Environment.NewLine, result);
-        }
-
-        [Test]
-        public void ForLoopWithAssignmentStatementAsBodyShouldNotOutputAssignmentResultOnEachIteration()
-        {
-            string result = TestHost.Execute("$j = 0; for ($i = 0; $i -ile 10; $i++) { $j++ }; $j");
-
-            Assert.AreEqual("11" + Environment.NewLine, result);
-        }
-
-        [Test]
-        public void ForEach()
-        {
-            string result = TestHost.Execute("foreach ($i in (0..10)) { $i }");
-
-            Assert.AreEqual(Enumerable.Range(0, 11).JoinString(Environment.NewLine) + Environment.NewLine, result);
-        }
-
-        [Test]
-        public void ForEachWithAssignmentStatementAsBodyShouldNotOutputAssignmentResultOnEachIteration()
-        {
-            string result = TestHost.Execute("$j = 0; foreach ($i in 0..10) { $j++ }; $j");
-
-            Assert.AreEqual("11" + Environment.NewLine, result);
-        }
-
-        [Test]
-        public void ForEachCharacterInStringIsString()
-        {
-            string result = TestHost.Execute("foreach ($char in 'abc') { $char }");
-
-            Assert.AreEqual("abc" + Environment.NewLine, result);
-        }
-
-        [Test]
-        public void ForEachCharacterInArray()
-        {
-            string result = TestHost.Execute("foreach ($char in 'abc'.ToCharArray()) { $char }");
-
-            Assert.AreEqual(string.Format("a{0}b{0}c{0}", Environment.NewLine), result);
         }
 
         [Test]

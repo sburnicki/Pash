@@ -30,15 +30,19 @@ namespace System.Management.Pash.Implementation
             ////          10.6 + 12               # double result 22.6
             ////          12 + "0xabc"            # int result 2760
 
+            // not in the specification, but shown by tests: if left is null, return the right object. not a copy.
+            // this even works with othe objects as FileInfo
+            if (leftValue == null)
+            {
+                return rightValue;
+            }
+
             // string concatenation 7.7.2
             if (leftValue is string)
             {
-                if (rightValue is object[])
-                {
-                    return leftValue + String.Join(" ", (object[])rightValue);
-                }
-                return leftValue + rightValue.ToString();
+                return leftValue + LanguagePrimitives.ConvertTo<string>(rightValue);
             }
+
             // array concatenation (7.7.3)
             if (leftValue is Array)
             {
@@ -62,8 +66,13 @@ namespace System.Management.Pash.Implementation
                 return resultList.ToArray();
             }
             // hashtable concatenation (7.7.4)
-            if (leftValue is Hashtable && rightValue is Hashtable)
+            if (leftValue is Hashtable)
             {
+                if (!(rightValue is Hashtable))
+                {
+                    throw new RuntimeException("Only a hashtable can be added to another hashtable",
+                                               "AddHashtableToNonHashtable", ErrorCategory.InvalidOperation, rightValue);
+                }
                 var resultHash = new Hashtable(StringComparer.InvariantCultureIgnoreCase);
                 var leftHash = (Hashtable) leftValue;
                 var rightHash = (Hashtable) rightValue;
@@ -88,8 +97,17 @@ namespace System.Management.Pash.Implementation
             return ArithmeticOperation(leftValue, rightValue, "+", addOp);
         }
 
-        public static object Multiply(object leftValue, object rightValue)
+        public static object Multiply(object leftValuePacked, object rightValuePacked)
         {
+            var leftValue = PSObject.Unwrap(leftValuePacked);
+            var rightValue = PSObject.Unwrap(rightValuePacked);
+            // well, this is not part of the specification, but can be shown with tests:
+            // if left is null, then null is returned. This even works with other objects like FileInfo on the right
+            if (leftValue == null)
+            {
+                return null;
+            }
+
             // string replication (7.6.2)
             if (leftValue is string)
             {
@@ -129,8 +147,10 @@ namespace System.Management.Pash.Implementation
             return ArithmeticOperation(leftValue, rightValue, "*", mulOp);
         }
 
-        public static object Divide(object leftValue, object rightValue)
+        public static object Divide(object leftValuePacked, object rightValuePacked)
         {
+            var leftValue = PSObject.Unwrap(leftValuePacked);
+            var rightValue = PSObject.Unwrap(rightValuePacked);
             // arithmetic division (7.6.4)
             object convLeft, convRight;
             if (!LanguagePrimitives.UsualArithmeticConversion(leftValue, rightValue, 
@@ -140,6 +160,11 @@ namespace System.Management.Pash.Implementation
             }
             dynamic left = convLeft;
             dynamic right = convRight;
+            // check for zero division first an throw same exception as PS
+            if (!(convLeft is double || convLeft is float) && right == 0)
+            {
+                throw new RuntimeException("Attempted to divide by zero");
+            }
             // if left is decimal, do decimal operation
             if (convLeft is decimal)
             {
@@ -150,15 +175,19 @@ namespace System.Management.Pash.Implementation
             return left % right == 0 ? left / right : ((double)left) / right;
         }
 
-        public static object Remainder(object leftValue, object rightValue)
+        public static object Remainder(object leftValuePacked, object rightValuePacked)
         {
+            var leftValue = PSObject.Unwrap(leftValuePacked);
+            var rightValue = PSObject.Unwrap(rightValuePacked);
             // arithmetic remainder (7.6.5)
             Func<dynamic, dynamic, dynamic> remOp = (dynamic x, dynamic y) => checked(x % y);
             return ArithmeticOperation(leftValue, rightValue, "%", remOp);
         }
 
-        public static object Subtract(object leftValue, object rightValue)
+        public static object Subtract(object leftValuePacked, object rightValuePacked)
         {
+            var leftValue = PSObject.Unwrap(leftValuePacked);
+            var rightValue = PSObject.Unwrap(rightValuePacked);
             // arithmetic expression (7.7.5)
             Func<dynamic, dynamic, dynamic> subOp = (dynamic x, dynamic y) => checked(x - y);
             return ArithmeticOperation(leftValue, rightValue, "-", subOp);
@@ -167,8 +196,8 @@ namespace System.Management.Pash.Implementation
         private static void ThrowInvalidArithmeticOperationException(object left, object right, string op)
         {
             var msg = String.Format("Operation [{0}] {1} [{2}] is not defined",
-                                    left.GetType().FullName, op,
-                                    right.GetType().FullName);
+                                    left == null ? "null" : left.GetType().FullName, op,
+                                    right == null ? "null" : right.GetType().FullName);
             throw new PSInvalidOperationException(msg);
         }
 
@@ -181,33 +210,48 @@ namespace System.Management.Pash.Implementation
             {
                 ThrowInvalidArithmeticOperationException(leftUnconverted, rightUnconverted, op);
             }
+            dynamic result;
             if (left is int && right is int)
             {
-                try
+                if (TryRunCheckedOperationCheckOverflow(checkedOperation, left, right, out result))
                 {
-                    return checkedOperation(left, right);
+                    return result;
                 }
-                catch (OverflowException)
-                {
-                    left = (long)((int) left); // int cast -> object to int, then to long
-                    right = (long)((int) right);
-                }
+                left = (long)((int) left); // int cast -> object to int, then to long
+                right = (long)((int) right);
             }
             if ((left is int || left is long) && (right is int || right is long))
             {
-                try
+                if (TryRunCheckedOperationCheckOverflow(checkedOperation, left, right, out result))
                 {
-                    return checkedOperation(left, right);
+                    return result;
                 }
-                catch (OverflowException)
-                {
-                    // first dynamic cast, as the objects might be ints or longs
-                    left = (double) ((dynamic) left);
-                    right = (double) ((dynamic)right);
-                }
+                // first dynamic cast, as the objects might be ints or longs
+                left = (double) ((dynamic) left);
+                right = (double) ((dynamic)right);
             }
             // otherwise its float, double, decimal, which cannot overflow
-            return checkedOperation(left, right);
+            TryRunCheckedOperationCheckOverflow(checkedOperation, left, right, out result);
+            return result;
+        }
+
+        static private bool TryRunCheckedOperationCheckOverflow(Func<dynamic, dynamic, dynamic> checkedOperation,
+                                                                dynamic left, dynamic right, out dynamic result)
+        {
+            result = null;
+            try
+            {
+                result = checkedOperation(left, right);
+                return true;
+            }
+            catch (OverflowException)
+            {
+                return false;
+            }
+            catch (DivideByZeroException)  // PS throws a RuntimeException instead
+            {
+                throw new RuntimeException("Attempted to divide by zero");
+            }
         }
     }
 }

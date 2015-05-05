@@ -2,29 +2,67 @@
 using System;
 using System.Collections.ObjectModel;
 using Pash.Implementation;
+using System.Management.Automation.Runspaces;
+using System.Management.Automation.Provider;
+using Microsoft.PowerShell.Commands;
 
 namespace System.Management.Automation
 {
     public sealed class PathIntrinsics
     {
-        private SessionStateGlobal _sessionState;
+        private SessionStateGlobal _sessionStateGlobal;
+        private SessionState _sessionState;
 
-        internal PathIntrinsics(SessionStateGlobal sessionState)
+        private PathGlobber _globber;
+        private PathGlobber Globber
         {
-            _sessionState = sessionState;
+            get
+            {
+                if (_globber == null)
+                {
+                    _globber = new PathGlobber(_sessionState);
+                }
+                return _globber;
+            }
         }
 
-        public PathInfo CurrentFileSystemLocation { get; private set; }
-        public PathInfo CurrentLocation { get { return _sessionState.CurrentLocation; } }
+        public PathInfo CurrentFileSystemLocation
+        {
+            get
+            {
+                var fsProvider = _sessionState.Provider.GetOne(FileSystemProvider.ProviderName);
+                if (fsProvider == null)
+                {
+                    return null;
+                }
+                var curDrive = fsProvider.CurrentDrive;
+                return new PathInfo(curDrive, curDrive.CurrentLocation, _sessionState);
+            }
+        }
+
+        public PathInfo CurrentLocation
+        {
+            get
+            {
+                return _sessionStateGlobal.CurrentLocation;
+            }
+        }
+
+        internal PathIntrinsics(SessionState sessionState)
+        {
+            _sessionState = sessionState;
+            _sessionStateGlobal = sessionState.SessionStateGlobal;
+        }
 
         public string Combine(string parent, string child)
         {
-            return _sessionState.MakePath(parent, child);
+            var runtime = new ProviderRuntime(_sessionState);
+            return Combine(parent, child, runtime);
         }
 
         public PathInfo CurrentProviderLocation(string providerName)
         {
-            return _sessionState.CurrentProviderLocation(providerName);
+            return _sessionStateGlobal.CurrentProviderLocation(providerName);
         }
 
         public Collection<string> GetResolvedProviderPathFromProviderPath(string path, string providerId)
@@ -39,7 +77,10 @@ namespace System.Management.Automation
 
         public Collection<PathInfo> GetResolvedPSPathFromPSPath(string path)
         {
-            throw new NotImplementedException();
+            var runtime = new ProviderRuntime(_sessionState);
+            var res = GetResolvedPSPathFromPSPath(new [] { path }, runtime);
+            runtime.ThrowFirstErrorOrContinue();
+            return res;
         }
 
         public string GetUnresolvedProviderPathFromPSPath(string path)
@@ -64,73 +105,204 @@ namespace System.Management.Automation
 
         public bool IsValid(string path)
         {
-            return _sessionState.IsValidPath(path);
+            var runtime = new ProviderRuntime(_sessionState);
+            return IsValid(path, runtime);
         }
 
         public PathInfoStack LocationStack(string stackName)
         {
-            return _sessionState.LocationStack(stackName);
+            return _sessionStateGlobal.LocationStack(stackName);
         }
 
         public string NormalizeRelativePath(string path, string basePath)
         {
-            return _sessionState.NormalizeRelativePath(path, basePath);
+            var runtime = new ProviderRuntime(_sessionState);
+            var res = NormalizeRelativePath(path, basePath, runtime);
+            runtime.ThrowFirstErrorOrContinue();
+            return res;
         }
 
         public string ParseChildName(string path)
         {
-            return _sessionState.GetPathChildName(path);
+            var runtime = new ProviderRuntime(_sessionState);
+            var res = ParseChildName(path, runtime);
+            runtime.ThrowFirstErrorOrContinue();
+            return res;
         }
 
         public string ParseParent(string path, string root)
         {
-            return _sessionState.GetParentPath(path, root);
+            var runtime = new ProviderRuntime(_sessionState);
+            var res = ParseParent(path, root, runtime);
+            runtime.ThrowFirstErrorOrContinue();
+            return res;
         }
 
         public PathInfo PopLocation(string stackName)
         {
-            return _sessionState.PopLocation(stackName);
+            return _sessionStateGlobal.PopLocation(stackName);
         }
 
         public void PushCurrentLocation(string stackName)
         {
-            _sessionState.PushCurrentLocation(stackName);
+            _sessionStateGlobal.PushCurrentLocation(stackName);
         }
 
         public PathInfoStack SetDefaultLocationStack(string stackName)
         {
-            return _sessionState.SetDefaultLocationStack(stackName);
+            return _sessionStateGlobal.SetDefaultLocationStack(stackName);
         }
 
         public PathInfo SetLocation(string path)
         {
-            return _sessionState.SetLocation(path);
+            var runtime = new ProviderRuntime(_sessionState);
+            var res = SetLocation(path, runtime);
+            runtime.ThrowFirstErrorOrContinue();
+            return res;
         }
 
         // internals
-        //internal string Combine(string parent, string child, CmdletProviderContext context);
-        //internal Collection<string> GetResolvedProviderPathFromProviderPath(string path, string providerId, CmdletProviderContext context);
-        //internal Collection<string> GetResolvedProviderPathFromPSPath(string path, CmdletProviderContext context, out ProviderInfo provider);
-        //internal Collection<PathInfo> GetResolvedPSPathFromPSPath(string path, CmdletProviderContext context);
-        //internal string GetUnresolvedProviderPathFromPSPath(string path, CmdletProviderContext context, out ProviderInfo provider, out PSDriveInfo drive);
-        //internal bool IsCurrentLocationOrAncestor(string path, CmdletProviderContext context);
-        //internal bool IsValid(string path, CmdletProviderContext context);
-        //internal string NormalizeRelativePath(string path, string basePath, CmdletProviderContext context);
-        //internal string ParseChildName(string path, CmdletProviderContext context);
-        //internal string ParseParent(string path, string root, CmdletProviderContext context);
-        //internal PathInfo SetLocation(string path, CmdletProviderContext context);
-
-        internal PathInfo SetLocation(string path, ProviderRuntime providerRuntime)
+        internal bool IsValid(string path, ProviderRuntime runtime)
         {
-            return _sessionState.SetLocation(path, providerRuntime);
+            ProviderInfo providerInfo;
+            path = new PathGlobber(_sessionState).GetProviderSpecificPath(path, runtime, out providerInfo);
+            var provider = _sessionStateGlobal.Provider.GetInstance(providerInfo);
+            var itemProvider = CmdletProvider.As<ItemCmdletProvider>(provider);
+            return itemProvider.IsValidPath(path, runtime);
+        }
+
+        internal string Combine(string parent, string child, ProviderRuntime runtime)
+        {
+            ProviderInfo providerInfo;
+            parent = new PathGlobber(_sessionState).GetProviderSpecificPath(parent, runtime, out providerInfo);
+            var provider = _sessionStateGlobal.Provider.GetInstance(providerInfo);
+            return Combine(provider, parent, child, runtime);
+        }
+
+        internal string Combine(CmdletProvider provider, string parent, string child, ProviderRuntime runtime)
+        {
+            CmdletProvider.VerifyType<ContainerCmdletProvider>(provider); // throws if it's not
+            var navigationPorivder = provider as NavigationCmdletProvider;
+            // for a container provider, this is always just the child string (yep, this is PS behavior)
+            if (navigationPorivder == null)
+            {
+                return child;
+            }
+
+            // otherwise use the NavigationCmdletProvider's MakePath method
+            return navigationPorivder.MakePath(parent, child, runtime);
+        }
+        //internal Collection<string> GetResolvedProviderPathFromProviderPath(string path, string providerId, ProviderRuntime runtime);
+        //internal Collection<string> GetResolvedProviderPathFromPSPath(string path, ProviderRuntime runtime);
+
+        internal Collection<PathInfo> GetResolvedPSPathFromPSPath(string[] paths, ProviderRuntime runtime)
+        {
+            var resolved = new Collection<PathInfo>();
+            foreach (var path in paths)
+            {
+                CmdletProvider p;
+                // by using always a fresh copy of the runtime, we make sure that different paths don't affect each other
+                var runtimeCopy = new ProviderRuntime(runtime);
+                var globbed = Globber.GetGlobbedProviderPaths(path, runtimeCopy, out p);
+                foreach (var curPath in globbed)
+                {
+                    resolved.Add(new PathInfo(runtimeCopy.PSDriveInfo, curPath, _sessionState));
+                }
+            }
+            return resolved;
+        }
+
+        //internal string GetUnresolvedProviderPathFromPSPath(string path, ProviderRuntime runtime, out ProviderInfo provider, out PSDriveInfo drive);
+        //internal bool IsCurrentLocationOrAncestor(string path, ProviderRuntime runtime);
+       
+        internal string NormalizeRelativePath(string path, string basePath, ProviderRuntime runtime)
+        {
+            // path shouldn't contain wildcards. They are *not* resolved
+            ProviderInfo info;
+            basePath = Globber.GetProviderSpecificPath(basePath, runtime, out info);
+            path = Globber.GetProviderSpecificPath(path, runtime, out info);
+            var provider = _sessionState.Provider.GetInstance(info);
+            CmdletProvider.VerifyType<ContainerCmdletProvider>(provider);
+            var navProvider = provider as NavigationCmdletProvider;
+
+            if (navProvider == null)
+            {
+                return path;
+            }
+            return navProvider.NormalizeRelativePath(path, basePath, runtime);
+        }
+
+        internal string ParseChildName(string path, ProviderRuntime runtime)
+        {
+            ProviderInfo info;
+            path = Globber.GetProviderSpecificPath(path, runtime, out info);
+            var provider = _sessionState.Provider.GetInstance(info);
+            return ParseChildName(provider, path, runtime);
+        }
+
+        internal string ParseChildName(CmdletProvider provider, string path, ProviderRuntime runtime)
+        {
+            var navProvider = provider as NavigationCmdletProvider;
+            if (navProvider == null)
+            {
+                return path;
+            }
+            return navProvider.GetChildName(path, runtime);
+        }
+
+        internal string ParseParent(string path, string root, ProviderRuntime runtime)
+        {
+            ProviderInfo info;
+            path = Globber.GetProviderSpecificPath(path, runtime, out info);
+            var provider = _sessionState.Provider.GetInstance(info);
+            return ParseParent(provider, path, root, runtime);
+        }
+
+        internal string ParseParent(CmdletProvider provider, string path, string root, ProviderRuntime runtime)
+        {
+            var navProvider = provider as NavigationCmdletProvider;
+            if (navProvider == null)
+            {
+                return "";
+            }
+            return navProvider.GetParentPath(path, root, runtime);
+        }
+
+        internal PathInfo SetLocation(string path, ProviderRuntime runtime)
+        {
+            if (path == null)
+            {
+                throw new PSArgumentException("Path is null", "SetLocationPathNull", ErrorCategory.InvalidArgument);
+            }
+
+            ProviderInfo pinfo;
+            path = Globber.GetProviderSpecificPath(path, runtime, out pinfo);
+            var provider = _sessionState.Provider.GetInstance(pinfo);
+            var containerProvider = CmdletProvider.As<ContainerCmdletProvider>(provider);
+            var itemIntrinsics = new ItemCmdletProviderIntrinsics(_sessionState);
+
+            if (!itemIntrinsics.Exists(path, runtime) ||
+                !itemIntrinsics.IsContainer(containerProvider, path, runtime))
+            {
+                throw new PSArgumentException("The path does not exist or is not a container",
+                    "SetLocationInvalidPath", ErrorCategory.InvalidArgument);
+            }
+
+            if (provider is FileSystemProvider)
+            {
+                // TODO: really? I think PS doesn't do this
+                System.Environment.CurrentDirectory = path;
+            }
+
+            var curDrive = runtime.PSDriveInfo;
+            curDrive.CurrentLocation = path;
+            _sessionStateGlobal.CurrentDrive = curDrive;
+            return new PathInfo(curDrive, path, _sessionState);
         }
 
         #region Path Operations
-        // TODO: make a common class that works with a path
-
-        // TODO: reverse on Unix?
-        public const char CorrectSlash = '\\';
-        public const char WrongSlash = '/';
+        public static readonly char CorrectSlash = System.IO.Path.DirectorySeparatorChar;
+        public static readonly char WrongSlash = System.IO.Path.AltDirectorySeparatorChar;
 
         internal static Path NormalizePath(Path path)
         {

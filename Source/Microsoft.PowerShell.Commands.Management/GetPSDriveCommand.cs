@@ -1,10 +1,14 @@
 ﻿// Copyright (C) Pash Contributors. License: GPL/BSD. See https://github.com/Pash-Project/Pash/
+using System.Linq;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Management.Automation;
+using System;
 
 namespace Microsoft.PowerShell.Commands
 {
     [Cmdlet("Get", "PSDrive", DefaultParameterSetName = "Name")]
+    [OutputType(typeof(PSDriveInfo))]
     public class GetPSDriveCommand : DriveMatchingCoreCommandBase
     {
         [Parameter(Position = 0, ParameterSetName = "LiteralName", Mandatory = true, ValueFromPipeline = false, ValueFromPipelineByPropertyName = true)]
@@ -19,39 +23,10 @@ namespace Microsoft.PowerShell.Commands
         [Parameter(ValueFromPipelineByPropertyName = true)]
         public string Scope { get; set; }
 
-        public GetPSDriveCommand()
-        {
-            PSProvider = new string[0];
-        }
-
         protected override void ProcessRecord()
         {
-            if ((PSProvider == null) || ((PSProvider != null) && (PSProvider.Length == 0)))
-            {
-                // TODO: as soon as we'll have formatters use the next line
-                // WriteObject(SessionState.Provider.GetAll(), true);
-
-                foreach (ProviderInfo providerInfo in SessionState.Provider.GetAll())
-                {
-                    WriteObject(providerInfo.Drives, true);
-                }
-            }
-            else
-            {
-                foreach (string str in PSProvider)
-                {
-                    // TODO: deal with Wildcards
-                    try
-                    {
-                        Collection<ProviderInfo> sendToPipeline = SessionState.Provider.Get(str);
-                        WriteObject(sendToPipeline, true);
-                    }
-                    catch (ProviderNotFoundException exception)
-                    {
-                        WriteError(new ErrorRecord(exception.ErrorRecord, exception));
-                    }
-                }
-            }
+            var drives = GetDrives(LiteralName, Name, PSProvider, Scope);
+            WriteObject(drives, true);
         }
     }
 }

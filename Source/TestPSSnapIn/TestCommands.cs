@@ -1,8 +1,13 @@
 using System;
-using System.Management.Automation;
-using System.ComponentModel;
+using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Globalization;
+using System.Linq;
+using System.Management.Automation;
+using System.Management.Automation.Provider;
+using Microsoft.PowerShell.Commands;
+using System.Runtime.InteropServices;
 
 namespace TestPSSnapIn
 {
@@ -35,6 +40,7 @@ namespace TestPSSnapIn
         {
             _msg = msg;
         }
+
         public string GetMessage()
         {
             return _msg;
@@ -62,7 +68,7 @@ namespace TestPSSnapIn
         }
     }
 
-    [Cmdlet(VerbsDiagnostic.Test, "PSSnapin")]
+    [Cmdlet(VerbsDiagnostic.Test, "Command")]
     public class TestCommand : PSCmdlet
     {
         public static string OutputString = "works";
@@ -243,6 +249,33 @@ namespace TestPSSnapIn
         protected override void ProcessRecord()
         {
             WriteObject(RandomString);
+        }
+    }
+
+    [Cmdlet(VerbsDiagnostic.Test, "WriteTwoMessages")]
+    public class TestWriteTwoMessagesCommand : PSCmdlet
+    {
+        [Parameter]
+        public string Msg1 { get; set; }
+
+        [Parameter]
+        public string Msg2 { get; set; }
+
+        protected override void ProcessRecord()
+        {
+            WriteObject("1: " + Msg1 + ", 2: " + Msg2);
+        }
+    }
+
+    [Cmdlet(VerbsDiagnostic.Test, "SwitchParameter")]
+    public class TestSwitchParameterCommand : PSCmdlet
+    {
+        [Parameter]
+        public SwitchParameter Switch { get; set; }
+
+        protected override void ProcessRecord()
+        {
+            WriteObject(Switch.IsPresent);
         }
     }
 
@@ -438,6 +471,25 @@ namespace TestPSSnapIn
         }
     }
 
+    [Cmdlet(VerbsDiagnostic.Test, "ParameterInTwoSetsButNotDefault", DefaultParameterSetName = "Default")]
+    public sealed class TestParameterInTwoSetsButNotDefaultCommand : PSCmdlet
+    {
+        [Parameter(Mandatory = true, Position = 0, ParameterSetName = "Custom1")]
+        [Parameter(Mandatory = true, Position = 0, ParameterSetName = "Custom2")]
+        public string Custom { get; set; }
+
+        [Parameter(Mandatory = true, Position = 1, ParameterSetName = "Custom2")]
+        public string Custom2 { get; set; }
+
+        [Parameter(Mandatory = true, Position = 0, ParameterSetName = "Default")]
+        public string DefParam { get; set; }
+
+        protected override void ProcessRecord()
+        {
+            WriteObject(ParameterSetName);
+        }
+    }
+
     [Cmdlet(VerbsDiagnostic.Test, "IntegerArraySum")]
     public sealed class TestIntegerArraySumCommand : PSCmdlet
     {
@@ -460,6 +512,88 @@ namespace TestPSSnapIn
         }
     }
 
+    [Cmdlet(VerbsDiagnostic.Test, "ParamIsNotMandatoryByDefault")]
+    public class TestParamIsNotMandatoryByDefaultCommand : PSCmdlet
+    {
+        [Parameter]
+        public string Message { get; set; }
+
+        protected override void ProcessRecord()
+        {
+            WriteObject(Message);
+        }
+    }
+
+    [Cmdlet(VerbsDiagnostic.Test, "PrintCredentials")]
+    public class TestPrintCredentialsCommand : PSCmdlet
+    {
+        [Credential, Parameter(Mandatory = true, Position=0)]
+        public PSCredential Credential { get; set; }
+
+        protected override void ProcessRecord()
+        {
+            WriteObject("User: " + Credential.UserName);
+            IntPtr unmanagedString = IntPtr.Zero;
+            try
+            {
+                unmanagedString = Marshal.SecureStringToGlobalAllocUnicode(Credential.Password);
+                WriteObject("Password: " + Marshal.PtrToStringUni(unmanagedString));
+            }
+            finally
+            {
+                Marshal.ZeroFreeGlobalAllocUnicode(unmanagedString);
+            }
+
+        }
+    }
+
+    [Cmdlet(VerbsDiagnostic.Test, "OneMandatoryParamByPipelineSelection", DefaultParameterSetName = "Message")]
+    public class TestOneMandatoryParamByPipelineSelectionCommand : PSCmdlet
+    {
+        [Parameter(Mandatory = true, ParameterSetName = "Message")]
+        public string Message { get; set; }
+
+        [Parameter(Mandatory = true, ParameterSetName = "Integer", ValueFromPipeline = true)]
+        public int Integer { get; set; }
+
+        protected override void BeginProcessing()
+        {
+            WriteObject(ParameterSetName);
+        }
+
+        protected override void ProcessRecord()
+        {
+            WriteObject(ParameterSetName);
+        }
+    }
+
+    public class TestMandatoryParamByPipelineSelectionCommandBase : PSCmdlet
+    {
+        [Parameter(Mandatory = true, ParameterSetName = "Message", ValueFromPipeline = true)]
+        public string Message { get; set; }
+
+        [Parameter(Mandatory = true, ParameterSetName = "Integer", ValueFromPipeline = true)]
+        public int Integer { get; set; }
+
+        protected override void BeginProcessing()
+        {
+            WriteObject(ParameterSetName);
+        }
+
+        protected override void ProcessRecord()
+        {
+            WriteObject(ParameterSetName);
+        }
+    }
+
+    [Cmdlet(VerbsDiagnostic.Test, "MandatoryParamByPipelineSelection", DefaultParameterSetName = "Message")]
+    public class TestMandatoryParamByPipelineSelectionCommand :
+        TestMandatoryParamByPipelineSelectionCommandBase {}
+
+    [Cmdlet(VerbsDiagnostic.Test, "MandatoryParamByPipelineSelectionWithoutDefault")]
+    public class TestMandatoryParamByPipelineSelectionWithoutDefaultCommand :
+                 TestMandatoryParamByPipelineSelectionCommandBase {}
+
     [TypeConverter(typeof(CustomTypeConverter))]
     public class Custom
     {
@@ -477,6 +611,80 @@ namespace TestPSSnapIn
         {
             string stringValue = value as string;
             return new Custom { Id = stringValue };
+        }
+    }
+
+    [Cmdlet(VerbsDiagnostic.Test, "ContentWriter", DefaultParameterSetName = "Path")]
+    public class TestContentWriter : WriteContentCommandBase
+    {
+        protected override void ProcessRecord()
+        {
+            foreach (string path in Path)
+            {
+                using (IContentWriter writer = InvokeProvider.Content.GetWriter(path).Single())
+                {
+                    IList items = writer.Write(Value);
+                    // Need to close writer before disposing it otherwise Microsoft's
+                    // FileSystemProvider throws an exception.
+                    writer.Close();
+                }
+            }
+        }
+    }
+
+    [Cmdlet(VerbsDiagnostic.Test, "ContentReader", DefaultParameterSetName = "Path")]
+    public class TestContentReader : ContentCommandBase
+    {
+        protected override void ProcessRecord()
+        {
+            foreach (string path in Path)
+            {
+                using (IContentReader reader = InvokeProvider.Content.GetReader(path).Single())
+                {
+                    while (true)
+                    {
+                        IList items = reader.Read(1);
+                        if (items.Count > 0)
+                        {
+                            WriteObject(items[0]);
+                        }
+                        else
+                        {
+                            reader.Close();
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    [Cmdlet(VerbsDiagnostic.Test, "ParametersByPositionWhenOneBoundByName")]
+    public class TestParametersByPositionWhenOneBoundByName : PSCmdlet
+    {
+        [Parameter(
+            Mandatory = true,
+            Position = 0)]
+        public string First { get; set; }
+
+        [Parameter(
+            Position = 1,
+            Mandatory = true)]
+        public string Second { get; set; }
+
+        [Parameter(
+            Position = 2,
+            Mandatory = true)]
+        public string Third { get; set; }
+
+        [Parameter(
+            Position = 3,
+            Mandatory = true)]
+        public string Fourth { get; set; }
+
+        protected override void ProcessRecord()
+        {
+            WriteObject(string.Format("'{0}', '{1}', '{2}', '{3}'", First, Second, Third, Fourth));
         }
     }
 }

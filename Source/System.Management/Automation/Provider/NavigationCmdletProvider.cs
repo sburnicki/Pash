@@ -7,77 +7,56 @@ namespace System.Management.Automation.Provider
 {
     public abstract class NavigationCmdletProvider : ContainerCmdletProvider
     {
-        private ProviderRuntime _providerRuntime;
-
         protected NavigationCmdletProvider()
         {
         }
 
-        protected virtual Path GetChildName(Path path)
-        {
-            if (string.IsNullOrEmpty(path))
-            {
-                throw new NullReferenceException("Path can't be null");
-            }
+        protected virtual string GetChildName(string path) { throw new NotImplementedException(); }
+        protected virtual string GetParentPath(string path, string root) { throw new NotImplementedException(); }
+        protected virtual bool IsItemContainer(string path) { throw new NotImplementedException(); }
+        protected virtual string MakePath(string parent, string child) { throw new NotImplementedException(); }
+        protected virtual void MoveItem(string path, string destination) { throw new NotImplementedException(); }
+        protected virtual object MoveItemDynamicParameters(string path, string destination) { throw new NotImplementedException(); }
+        protected virtual string NormalizeRelativePath(string path, string basePath) { throw new NotImplementedException(); }
 
-            return path.GetChildNameOrSelfIfNoChild();
-        }
-
-        internal string GetChildName(Path path, ProviderRuntime providerRuntime)
+        // internals
+        internal string GetChildName(string path, ProviderRuntime providerRuntime)
         {
-            _providerRuntime = providerRuntime;
+            ProviderRuntime = providerRuntime;
             return GetChildName(path);
         }
 
-        protected virtual Path GetParentPath(Path path, Path root)
+        internal string GetParentPath(string path, string root, ProviderRuntime providerRuntime)
         {
-            if ((root == null) && (PSDriveInfo != null))
-            {
-                root = PSDriveInfo.Root;
-            }
-
-
-            return path.GetParentPath(root);
-        }
-
-        internal string GetParentPath(Path path, string root, ProviderRuntime providerRuntime)
-        {
-            _providerRuntime = providerRuntime;
+            ProviderRuntime = providerRuntime;
             return GetParentPath(path, root);
         }
 
-        protected virtual bool IsItemContainer(Path path)
+        internal bool IsItemContainer(string path, ProviderRuntime providerRuntime)
         {
-            throw new NotImplementedException();
-        }
-
-        internal bool IsItemContainer(Path path, ProviderRuntime providerRuntime)
-        {
-            _providerRuntime = providerRuntime;
+            ProviderRuntime = providerRuntime;
             return IsItemContainer(path);
         }
 
-        protected virtual string MakePath(Path parent, Path child)
+        internal string MakePath(string parent, string child, ProviderRuntime providerRuntime)
         {
-            return parent.Combine(child);
+            ProviderRuntime = providerRuntime;
+            return MakePath(parent, child);
         }
 
-        protected virtual void MoveItem(Path path, Path destination) { throw new NotImplementedException(); }
-        protected virtual object MoveItemDynamicParameters(Path path, string destination) { throw new NotImplementedException(); }
-        protected virtual string NormalizeRelativePath(Path path, string basePath) { throw new NotImplementedException(); }
-
-        // internals
-        //internal string GetChildName(Path path, System.Management.Automation.CmdletProviderContext context);
-        //internal string GetParentPath(Path path, string root, System.Management.Automation.CmdletProviderContext context);
-        //internal bool IsItemContainer(Path path, System.Management.Automation.CmdletProviderContext context);
-        //internal string MakePath(string parent, string child, System.Management.Automation.CmdletProviderContext context);
-        //internal void MoveItem(Path path, string destination, System.Management.Automation.CmdletProviderContext context);
-        //internal object MoveItemDynamicParameters(Path path, string destination, System.Management.Automation.CmdletProviderContext context);
-        //internal string NormalizeRelativePath(Path path, string basePath, System.Management.Automation.CmdletProviderContext context);
-
-        internal static Path NormalizePath(Path path)
+        internal void MoveItem(string path, string destination, ProviderRuntime providerRuntime)
         {
-            return PathIntrinsics.NormalizePath(path);
+            ProviderRuntime = providerRuntime;
+            MoveItem(path, destination);
         }
+
+        //internal object MoveItemDynamicParameters(string path, string destination, ProviderRuntime providerRuntime);
+
+        internal string NormalizeRelativePath(string path, string basePath, ProviderRuntime providerRuntime)
+        {
+            ProviderRuntime = providerRuntime;
+            return NormalizeRelativePath(path, basePath);
+        }
+
     }
 }

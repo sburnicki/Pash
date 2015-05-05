@@ -96,7 +96,7 @@ $path::GetExtension('test.txt')
                   @"$b = ""abcXYZabc""",            // punting for now
                   @"$b.ToUpper()					# call instance method")]
         [TestCase(@"[math]::Sqrt(2) 				# convert 2 to 2.0 and call method")]
-        [TestCase(@"[math]::Sqrt(2D) 				# convert 2D to 2.0 and call method", Explicit = true)]
+        [TestCase(@"[math]::Sqrt(2D) 				# convert 2D to 2.0 and call method")]
         [TestCase(@"[math]::Sqrt($true) 			# convert $true to 1.0 and call method")]
         [TestCase(@"[math]::Sqrt(""20"") 			# convert ""20"" to 20 and call method")]
         [TestCase(@"$a = [math]::Sqrt				# get method descriptor for Sqrt
@@ -198,21 +198,11 @@ $a.ID									# get ID from each element in the array
         }
 
         [Test]
-        [Platform("Win")]
-        public void CallGetTypeOnTypeOnWindows()
+        public void CallGetTypeOnType()
         {
             string result = TestHost.Execute("'abc'.GetType().GetType().FullName");
 
-            Assert.AreEqual("System.RuntimeType" + Environment.NewLine, result);
-        }
-
-        [Test]
-        [Platform("Unix")]
-        public void CallGetTypeOnTypeOnUnix()
-        {
-            string result = TestHost.Execute("'abc'.GetType().GetType().FullName");
-
-            Assert.AreEqual("System.MonoType" + Environment.NewLine, result);
+            Assert.AreEqual(typeof(System.Environment).GetType().FullName + Environment.NewLine, result);
         }
 
         [Test]
@@ -224,21 +214,11 @@ $a.ID									# get ID from each element in the array
         }
 
         [Test]
-        [Platform("Win")]
-        public void CallGetTypeMethodOnSystemEnvironmentOnWindows()
+        public void CallGetTypeMethodOnSystemEnvironment()
         {
             string result = TestHost.Execute("[Environment].GetType().FullName");
 
-            Assert.AreEqual("System.RuntimeType" + Environment.NewLine, result);
-        }
-
-        [Test]
-        [Platform("Unix")]
-        public void CallGetTypeMethodOnSystemEnvironmentOnUnix()
-        {
-            string result = TestHost.Execute("[Environment].GetType().FullName");
-
-            Assert.AreEqual("System.MonoType" + Environment.NewLine, result);
+            Assert.AreEqual(typeof(System.Environment).GetType().FullName + Environment.NewLine, result);
         }
 
         [Test]
@@ -253,27 +233,14 @@ $path.FullName
         }
 
         [Test]
-        [Platform("Win")]
-        public void CallGetTypeOnTypeReferencedByVariableOnWindows()
+        public void CallGetTypeOnTypeReferencedByVariable()
         {
             var result = TestHost.Execute(true, @"
 $path = [System.IO.Path]
 $path.GetType().FullName
 ");
-
-            Assert.AreEqual("System.RuntimeType" + Environment.NewLine, result);
+            Assert.AreEqual(typeof(System.Environment).GetType().FullName + Environment.NewLine, result);
         }
 
-        [Test]
-        [Platform("Unix")]
-        public void CallGetTypeOnTypeReferencedByVariableOnUnix()
-        {
-            var result = TestHost.Execute(true, @"
-$path = [System.IO.Path]
-$path.GetType().FullName
-");
-
-            Assert.AreEqual("System.MonoType" + Environment.NewLine, result);
-        }
     }
 }

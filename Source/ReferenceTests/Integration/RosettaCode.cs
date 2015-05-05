@@ -12,7 +12,7 @@ namespace ReferenceTests.Integration
     [TestFixture]
     public class RosettaCode : ReferenceTestBase
     {
-        [Test, Explicit("Wrong output because arrays are not converted correctly to strings")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Array_concatenation#PowerShell
         public void ArrayConcatenation()
         {
@@ -52,7 +52,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NullReferenceException in Ast.cs:44")]
+        [Test]
         [SetCulture("en-US")]
         // Taken from http://rosettacode.org/wiki/Averages/Arithmetic_mean#PowerShell
         public void AverageArithmeticMean1()
@@ -141,7 +141,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Format operator not implemented")]
+        [Test, Explicit("Value '2007' can't be converted or casted to 'System.DateTime'")]
         [SetCulture("en-US")]
         // Taken from http://rosettacode.org/wiki/Date_format#PowerShell
         public void DateFormat()
@@ -154,7 +154,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Where-Object not implemented")]
+        [Test, Explicit("Value '2008' can't be converted or casted to 'System.DateTime'")]
         // Taken from http://rosettacode.org/wiki/Day_of_the_week#PowerShell
         public void DayOfWeek()
         {
@@ -212,7 +212,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NullReferenceException in Ast.cs:44")]
+        [Test]
         // Adapted from http://rosettacode.org/wiki/Factorial#PowerShell
         public void Factorial1()
         {
@@ -229,7 +229,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NullReferenceException in Ast.cs:44")]
+        [Test]
         // Adapted from http://rosettacode.org/wiki/Factorial#PowerShell
         public void Factorial2()
         {
@@ -249,7 +249,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NullReferenceException in Ast.cs:44")]
+        [Test, Explicit("join expression not implemented")]
         // Adapted from http://rosettacode.org/wiki/Factorial#PowerShell
         public void Factorial3()
         {
@@ -266,7 +266,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NullReferenceException in Ast.cs:44")]
+        [Test]
         // Adapted from http://rosettacode.org/wiki/Factors_of_an_integer#PowerShell
         public void FactorsOfAnInteger1()
         {
@@ -280,7 +280,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NullReferenceException in Ast.cs:44")]
+        [Test]
         // Adapted from http://rosettacode.org/wiki/Factors_of_an_integer#PowerShell
         public void FactorsOfAnInteger2()
         {
@@ -297,7 +297,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Wrong result of 1. Perhaps parameter passing does not work correctly.")]
+        [Test]
         public void Fibonacci1()
         {
             var code = NewlineJoin(
@@ -433,7 +433,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Format operator not yet implemented")]
+        [Test]
         [SetCulture("en-US")]
         // Taken from http://rosettacode.org/wiki/Formatted_numeric_output#PowerShell
         public void FormattedNumericOutput()
@@ -444,7 +444,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NullReferenceException in Ast.cs:44")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Function_definition#PowerShell
         public void FunctionDefinition1()
         {
@@ -458,7 +458,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NullReferenceException in Ast.cs:44")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Function_definition#PowerShell
         public void FunctionDefinition2()
         {
@@ -472,7 +472,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NullReferenceException in Ast.cs:44")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Function_definition#PowerShell
         public void FunctionDefinition3()
         {
@@ -486,7 +486,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Tries to execute param as a command")]
+        [Test, Explicit("Param block still needs to be in the same line as parenthesis")]
         // Taken from http://rosettacode.org/wiki/Function_definition#PowerShell
         public void FunctionDefinition4()
         {
@@ -636,7 +636,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Decimal type suffix not yet implemented")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Literals/Integer#PowerShell
         public void LiteralsInteger()
         {
@@ -653,7 +653,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("joined unary operator expression not yet implemented")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Logical_operations#PowerShell
         public void LogicalOperations()
         {
@@ -674,7 +674,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Wrong answer, perhaps because parameter passing doesn't work")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Look-and-say_sequence#PowerShell
         public void LookAndSaySequence()
         {
@@ -713,7 +713,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Infinite loop currently, as break doesn't work")]
+        [Test]
         // Adapted from http://rosettacode.org/wiki/Loops/Break#PowerShell
         public void LoopsBreak()
         {
@@ -731,7 +731,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Lots of additional newlines in the output")]
+        [Test]
         // Adapted from http://rosettacode.org/wiki/Loops/Continue#PowerShell
         public void LoopsContinue()
         {
@@ -751,7 +751,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NotImplementedException")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Loops/Do-while#PowerShell
         public void LoopsDoWhile()
         {
@@ -766,7 +766,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NotImplementedException for decrement expression")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Loops/Downward_for#PowerShell
         public void LoopsDownwardFor()
         {
@@ -837,7 +837,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Wrong output, as break doesn't work yet")]
+        [Test]
         // Adapted from http://rosettacode.org/wiki/Loops/N_plus_one_half#PowerShell
         public void LoopsNPlusOneHalf1()
         {
@@ -899,7 +899,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NullReferenceException in Ast.cs:44")]
+        [Test, Explicit("Get-Random is not properly implemented")]
         // Taken from http://rosettacode.org/wiki/Monte_Carlo_Simulation#PowerShell
         public void MonteCarlo()
         {
@@ -930,7 +930,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(10, properties["Iterations"]);
         }
 
-        [Test, Explicit("NullReferenceException in Ast.cs:44")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Mutual_recursion#PowerShell
         public void MutualRecursion()
         {
@@ -949,7 +949,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Parameter passing doesn't work yet")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Named_parameters#PowerShell
         public void NamedParameters()
         {
@@ -976,12 +976,12 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Format operator not implemented yet")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Non-decimal_radices/Output#PowerShell
         public void NonDecimalRadicesOutput()
         {
             var code = NewlineJoin(
-                "foreach ($n in 0..5    ) {",
+                "foreach ($n in 0..5) {",
                 "    \"Base 2:  \" + [Convert]::ToString($n, 2)",
                 "    \"Base 8:  \" + [Convert]::ToString($n, 8)",
                 "    \"Base 10: \" + $n",
@@ -1001,7 +1001,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NullReferenceException in Ast.cs:44")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Primality_by_trial_division#PowerShell
         public void PrimalityByTrialDivision()
         {
@@ -1020,7 +1020,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Format operator not implemented yet")]
+        [Test]
         // Adapted from http://rosettacode.org/wiki/Quine#PowerShell
         public void Quine()
         {
@@ -1133,7 +1133,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Cannot cast string to regex")]
+        [Test, Explicit("Cannot index an object of type 'RegularExpressions.GroupCollection'")]
         // Taken from http://rosettacode.org/wiki/Run-length_encoding#PowerShell
         public void RunLengthEncoding()
         {
@@ -1164,7 +1164,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Scope modifiers don't work in strings yet")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Scope_modifiers#PowerShell
         public void ScopeModifiers1()
         {
@@ -1181,7 +1181,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NullReferenceException in Ast.cs:44")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Scope_modifiers#PowerShell
         public void ScopeModifiers2()
         {
@@ -1198,7 +1198,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Where-Object not yet implemented")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Select_from_Array#PowerShell
         public void SelectFromArray()
         {
@@ -1212,7 +1212,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NullReferenceException in Ast.cs:44")]
+        [Test, Explicit("Filters are not yet implemented")]
         // Taken from http://rosettacode.org/wiki/Sequence_of_non-squares#PowerShell
         public void SequenceOfNonSquares()
         {
@@ -1230,7 +1230,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NullReferenceException in Ast.cs:44")]
+        [Test, Explicit("Wrong result. But why? And when does trinagle write to pipeline?")]
         // Adapted from http://rosettacode.org/wiki/Sierpinski_carpet#PowerShell
         public void SierpińskiCarpet()
         {
@@ -1287,7 +1287,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NullReferenceException in Ast.cs:44")]
+        [Test, Explicit("Wrong result. But why? And when does trinagle write to pipeline?")]
         // Taken from http://rosettacode.org/wiki/Sierpinski_triangle#PowerShell
         public void SierpińskiTriangle()
         {
@@ -1438,7 +1438,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Wrong result")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Sum_and_product_of_an_array#PowerShell
         public void SumAndProductOfArray2()
         {
@@ -1555,7 +1555,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("Format operator not implemented")]
+        [Test, Explicit("String formatting is not yet correctly implemented")]
         [SetCulture("de-DE")]
         // Taken from http://rosettacode.org/wiki/Trigonometric_functions#PowerShell
         public void TrigonometricFunctions()
@@ -1617,7 +1617,7 @@ namespace ReferenceTests.Integration
             Assert.AreEqual(expected, actual);
         }
 
-        [Test, Explicit("NullReferenceException in Ast.cs:44")]
+        [Test]
         // Taken from http://rosettacode.org/wiki/Variables#PowerShell
         public void Variables()
         {

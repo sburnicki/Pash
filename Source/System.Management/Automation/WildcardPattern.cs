@@ -1,6 +1,8 @@
 ﻿// Copyright (C) Pash Contributors. License: GPL/BSD. See https://github.com/Pash-Project/Pash/
 using System;
+using System.Linq;
 using System.Text.RegularExpressions;
+using System.Collections.Generic;
 
 namespace System.Management.Automation
 {
@@ -75,12 +77,95 @@ namespace System.Management.Automation
         {
             // This block of code is actually about the same speed as a linear search because Mono (and probably .NET) seem to use the
             // Tuned Boyer-Moore text searching algorithm for Sting.Replace()
-            return
-                pattern.Replace("`*", "*")
-                       .Replace("`?", "?")
-                       .Replace("`[", "[")
-                       .Replace("`]", "]");
+            return UnescapeWildcardsIn(pattern, new[] { "*", "?", "]", "[" });
+        }
 
+        internal static WildcardPattern[] CreateWildcards(IList<string> strs)
+        {
+            if (strs == null)
+            {
+                return new WildcardPattern[0];
+            }
+            return (from s in strs select new WildcardPattern(s, WildcardOptions.IgnoreCase)).ToArray();
+        }
+
+        internal static bool IsAnyMatch(WildcardPattern[] wildcards, string input)
+        {
+            foreach (var wc in wildcards)
+            {
+                if (wc.IsMatch(input))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public static Dictionary<string, T> FilterDictionary<T>(string[] patterns, Dictionary<string, T> dictionary)
+        {
+            return FilterDictionary<T>(CreateWildcards(patterns), dictionary);
+        }
+
+        public static Dictionary<string, T> FilterDictionary<T>(WildcardPattern[] patterns, Dictionary<string, T> dictionary)
+        {
+            var results = new Dictionary<string, T>();
+            foreach (var pair in dictionary)
+            {
+                if (IsAnyMatch(patterns, pair.Key))
+                {
+                    results.Add(pair.Key, pair.Value);
+                }
+            }
+            return results;
+        }
+
+        private static string UnescapeWildcardsIn(string pattern, string[] wildcards)
+        {
+            for (int i = 0; i < wildcards.Length; i++)
+            {
+                pattern = UnescapeWildcardIn(pattern, wildcards[i]);
+            }
+
+            return pattern;
+        }
+
+        private static string UnescapeWildcardIn(string pattern, string wildcard)
+        {
+            int indexOfWildcard = pattern.IndexOf(wildcard, StringComparison.Ordinal);
+
+            if (IsWildcardTheFirstCharacterOrDoesNotExist(indexOfWildcard))
+            {
+                return pattern;
+            }
+
+            var indexOfFirstBacktick = GetIndexOfFirstBacktickBeforeWildcard(pattern, indexOfWildcard);
+
+            return pattern.Replace(
+                new String('`', indexOfWildcard - indexOfFirstBacktick) + wildcard,
+                indexOfWildcard - indexOfFirstBacktick > 1 ? "`" + wildcard : wildcard);
+        }
+
+        private static bool IsWildcardTheFirstCharacterOrDoesNotExist(int indexOfWildcard)
+        {
+            return indexOfWildcard < 1;
+        }
+
+        private static int GetIndexOfFirstBacktickBeforeWildcard(string pattern, int index)
+        {
+            for (int i = index - 1, j = index; i >= 0; j = i, i--)
+            {
+                if (pattern[i] != '`')
+                {
+                    return j;
+                }
+
+                if (i == 0)
+                {
+                    return 0;
+                }
+            }
+
+            return index;
         }
 
         private bool Clear()

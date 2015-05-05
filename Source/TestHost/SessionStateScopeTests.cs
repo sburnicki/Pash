@@ -5,9 +5,16 @@ using System.Management.Automation.Runspaces;
 using System.Management.Automation;
 using System.Collections.Generic;
 using System.Management.Automation.Language;
+using TestPSSnapIn;
+using System.Management.Automation.Provider;
 
 namespace TestHost
 {
+
+    class DummyProvider : DriveCmdletProvider
+    {
+    }
+
     [TestFixture]
     public class SessionStateScopeTests
     {
@@ -25,14 +32,21 @@ namespace TestHost
         private SessionState localState;
         private Dictionary<AvailableStates, SessionState> states;
         private CommandManager hostCommandManager;
+        private ProviderInfo dummyProvider;
 
         [SetUp]
         public void createScopes()
         {
             TestHost testHost = new TestHost(new TestHostUserInterface());
+
             Runspace hostRunspace = TestHost.CreateRunspace(testHost);
 
             globalState = hostRunspace.ExecutionContext.SessionState;
+
+            var dummyProviderInfo = new ProviderInfo(globalState, typeof(DummyProvider), "DummyProvider", "", null);
+            globalState.Provider.Add(dummyProviderInfo, hostRunspace.ExecutionContext);
+            dummyProvider = globalState.Provider.GetOne("DummyProvider");
+
             scriptState = new SessionState(globalState);
             scriptState.IsScriptScope = true;
             functionState = new SessionState(scriptState);
@@ -236,10 +250,9 @@ namespace TestHost
         public void DriveRemoveNotExistingTest ()
         {
             PSDriveInfo info = createDrive ("test");
-            try {
-                globalState.Drive.Remove (info.Name, true, "local");
-                Assert.True (false);
-            } catch (DriveNotFoundException) { }
+            Assert.Throws<DriveNotFoundException>(delegate {
+                globalState.Drive.Remove(info.Name, true, "local");
+            });
         }
 
         [Test]
@@ -327,11 +340,10 @@ namespace TestHost
 
         public void DriveGetAllForProviderTest()
         {
-            var provider = new ProviderInfo (null, null, "testProvider", "", null);
-            globalState.Drive.New(createDrive ("global", "", provider), "local");
-            scriptState.Drive.New(createDrive ("script", "", provider), "local");
-            functionState.Drive.New(createDrive ("function", "", provider), "local");
-            localState.Drive.New (createDrive("local", "", provider), "local");
+            globalState.Drive.New(createDrive ("global", ""), "local");
+            scriptState.Drive.New(createDrive ("script", ""), "local");
+            functionState.Drive.New(createDrive ("function", ""), "local");
+            localState.Drive.New (createDrive("local", ""), "local");
             var drives = localState.Drive.GetAllForProvider("testProvider");
             Assert.AreEqual(4, drives.Count);
             foreach (var curDrive in drives) {
@@ -348,9 +360,9 @@ namespace TestHost
             } catch (MethodInvocationException) { }
         }
 
-        private PSDriveInfo createDrive(string name, string descr="", ProviderInfo provider=null)
+        private PSDriveInfo createDrive(string name, string descr="")
         {
-            return new PSDriveInfo(name, provider, String.Empty, descr, null);
+            return new PSDriveInfo(name, dummyProvider, String.Empty, descr, null);
         }
 
         #endregion
@@ -461,7 +473,7 @@ namespace TestHost
         private FunctionInfo createFunction(string name, string description = "",
                                             ScopedItemOptions options = ScopedItemOptions.None)
         {
-            var info = new FunctionInfo(name, null, options);
+            var info = new FunctionInfo(name, null, null, options);
             info.Description = description;
             return info;
         }
@@ -519,7 +531,7 @@ namespace TestHost
             {
                 if (curState.Key == affectedState)
                 {
-                    Assert.AreEqual(0, curState.Value.Alias.GetAllAtScope("local").Count);
+                    Assert.AreEqual(0, curState.Value.Alias.GetAllLocal().Count);
                 }
                 else
                 {
@@ -550,29 +562,6 @@ namespace TestHost
                 }
             }
             Assert.True (found);
-        }
-
-        [TestCase("local", new string [] {})]
-        [TestCase("0", new string [] {})]
-        [TestCase("1", new string [] {"function"})]
-        [TestCase("script", new string [] {"script1", "script2"})]
-        [TestCase("2", new string [] {"script1", "script2"})]
-        [TestCase("global", new string [] {"global1", "global2"})]
-        [TestCase("3", new string [] {"global1", "global2"})]
-        [TestCase("4", new string [] {}, ExpectedException=typeof(ArgumentOutOfRangeException))]
-        public void AliasGetAllAtScopeTest(string scope, string[] expectedDescriptions)
-        {
-            globalState.Alias.New(createAlias("x", "global1"), "local");
-            globalState.Alias.New(createAlias("y", "global2"), "local");
-            scriptState.Alias.New(createAlias("x", "script1"), "local");
-            scriptState.Alias.New(createAlias("y", "script2"), "local");
-            functionState.Alias.New(createAlias("x", "function"), "local");
-            var drives = localState.Alias.GetAllAtScope(scope);
-            Assert.AreEqual(expectedDescriptions.Length, drives.Count);
-            foreach (var curAlias in drives)
-            {
-                Assert.Contains(curAlias.Value.Definition, expectedDescriptions);
-            }
         }
 
         [Test]

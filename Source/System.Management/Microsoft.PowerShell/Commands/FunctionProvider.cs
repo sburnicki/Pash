@@ -21,12 +21,12 @@ namespace Microsoft.PowerShell.Commands
             return collection;
         }
 
-        protected override object NewItemDynamicParameters(Path path, string type, object newItemValue)
+        protected override object NewItemDynamicParameters(string path, string type, object newItemValue)
         {
             return new FunctionProviderDynamicParameters();
         }
 
-        protected override object SetItemDynamicParameters(Path path, object value)
+        protected override object SetItemDynamicParameters(string path, object value)
         {
             return new FunctionProviderDynamicParameters();
         }
@@ -36,9 +36,11 @@ namespace Microsoft.PowerShell.Commands
             throw new NotImplementedException();
         }
 
-        internal override object GetSessionStateItem(Path name)
+        internal override object GetSessionStateItem(string name)
         {
-            throw new NotImplementedException();
+            Path path = PathIntrinsics.RemoveDriveName(name);
+            path = path.TrimStartSlash();
+            return SessionState.Function.Get(path);
         }
 
         internal override IDictionary GetSessionStateTable()
@@ -62,14 +64,20 @@ namespace Microsoft.PowerShell.Commands
 
         }
 
-        internal override void RemoveSessionStateItem(Path name)
+        internal override void RemoveSessionStateItem(string name)
         {
             throw new NotImplementedException();
         }
 
-        internal override void SetSessionStateItem(Path name, object value, bool writeItem)
+        internal override void SetSessionStateItem(string name, object value, bool writeItem)
         {
             throw new NotImplementedException();
+        }
+
+        protected override void GetItem(string name)
+        {
+            name = PathIntrinsics.RemoveDriveName(new Path(name).TrimEndSlash());
+            GetChildItems(name, false);
         }
     }
 }

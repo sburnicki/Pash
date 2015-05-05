@@ -23,12 +23,12 @@ namespace Microsoft.PowerShell.Commands
             return collection;
         }
 
-        protected override object NewItemDynamicParameters(Path path, string type, object newItemValue)
+        protected override object NewItemDynamicParameters(string path, string type, object newItemValue)
         {
             return new AliasProviderDynamicParameters();
         }
 
-        protected override object SetItemDynamicParameters(Path path, object value)
+        protected override object SetItemDynamicParameters(string path, object value)
         {
             return new AliasProviderDynamicParameters();
         }
@@ -38,9 +38,11 @@ namespace Microsoft.PowerShell.Commands
             throw new NotImplementedException();
         }
 
-        internal override object GetSessionStateItem(Path name)
+        internal override object GetSessionStateItem(string name)
         {
-            throw new NotImplementedException();
+            Path path = PathIntrinsics.RemoveDriveName(name);
+            path = path.TrimStartSlash();
+            return SessionState.Alias.Get(path);
         }
 
         internal override System.Collections.IDictionary GetSessionStateTable()
@@ -50,17 +52,45 @@ namespace Microsoft.PowerShell.Commands
 
         internal override object GetValueOfItem(object item)
         {
-            throw new NotImplementedException();
+            var aliasInfo = item as AliasInfo;
+            if (aliasInfo != null)
+            {
+                return aliasInfo.Definition;
+            }
+            return base.GetValueOfItem(item);
         }
 
-        internal override void RemoveSessionStateItem(Path name)
+        internal override void RemoveSessionStateItem(string name)
         {
             throw new NotImplementedException();
         }
 
-        internal override void SetSessionStateItem(Path name, object value, bool writeItem)
+        internal override void SetSessionStateItem(string name, object value, bool writeItem)
         {
-            throw new NotImplementedException();
+            Path path = PathIntrinsics.RemoveDriveName(name);
+            path = path.TrimStartSlash();
+
+            if (value is Array)
+            {
+                var array = (Array)value;
+                if (array.Length > 1)
+                {
+                    throw new PSArgumentException("value");
+                }
+                value = array.GetValue(0);
+            }
+            
+            var aliasInfo = new AliasInfo(path, value.ToString(), null);
+            SessionState.Alias.Set(aliasInfo, "global");
+
+            var a = SessionState.Alias.Get(path);
+            Console.WriteLine(a.Definition);
+        }
+
+        protected override void GetItem(string path)
+        {
+            path = PathIntrinsics.RemoveDriveName(new Path(path).TrimEndSlash());
+            GetChildItems(path, false);
         }
     }
 }

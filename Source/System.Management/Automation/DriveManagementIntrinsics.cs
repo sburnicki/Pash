@@ -4,6 +4,8 @@ using System.Collections.ObjectModel;
 using Pash.Implementation;
 using System.Collections.Generic;
 using System.Linq;
+using System.Management.Automation.Provider;
+using System.Management.Automation.Runspaces;
 
 namespace System.Management.Automation
 {
@@ -12,12 +14,10 @@ namespace System.Management.Automation
         private const string driveDoesntExistFormat = @"No such drive. A drive with the name ""{0}"" doesn't exist.";
         private const string driveAlreadyExistsFormat = @"A drive with the name ""{0}"" already exists.";
 
-        private SessionState _sessionState;
         private SessionStateScope<PSDriveInfo> _scope;
 
-        internal DriveManagementIntrinsics(SessionState sessionState, SessionStateScope<PSDriveInfo> driveScope)
+        internal DriveManagementIntrinsics(SessionStateScope<PSDriveInfo> driveScope)
         {
-            _sessionState = sessionState;
             _scope = driveScope;
         }
 
@@ -25,8 +25,14 @@ namespace System.Management.Automation
         {
             get
             {
-                return _sessionState.SessionStateGlobal.CurrentDrive;
+                return _scope.SessionState.SessionStateGlobal.CurrentDrive;
             }
+        }
+
+        internal bool TryGet(string driveName, out PSDriveInfo info)
+        {
+            info = _scope.Get(driveName, false);
+            return info != null;
         }
 
         public PSDriveInfo Get(string driveName)
@@ -100,44 +106,85 @@ namespace System.Management.Automation
 
         public PSDriveInfo New(PSDriveInfo drive, string scope)
         {
+            var runtime = new ProviderRuntime(_scope.SessionState);
+            return New(drive, scope, runtime);
+        }
+
+        internal PSDriveInfo New(PSDriveInfo drive, string scope, ProviderRuntime providerRuntime)
+        {
+            // make sure the provider can intitalize this drive properly
+            drive = GetProvider(drive).NewDrive(drive, providerRuntime);
+            return NewSkipInit(drive, scope);
+        }
+
+        internal PSDriveInfo NewSkipInit(PSDriveInfo drive, string scope)
+        {
             /*
              * "Fun" Fact: Although "private" is a valid scope specifier, it does not really make the drive
              * private, i.e. it does not restricts child scopes froma accessing or removing it.
              * "Private" seems to be only effective for variables, functions and aliases, but not for drives.
              * Who knows why.
              */
-            //TODO: the provider's "NewDrive" method must be called here l #providerSupport
             _scope.SetAtScope(drive, scope, false);
             return drive;
         }
 
         public void Remove(string driveName, bool force, string scope)
         {
+            var runtime = new ProviderRuntime(_scope.SessionState);
+            runtime.Force = new SwitchParameter(force);
+            Remove(driveName, scope, runtime);
+        }
+
+        internal void Remove(string driveName, string scope, ProviderRuntime runtime)
+        {
             /* TODO: force is used to remove the drive "although it's in use by the provider"
              * So, we need to find out when a drive is in use and should throw an exception on removal without
              * the "force" parameter being true
              */
-            try
-            {
-                //TODO: the provider's "RemoveDrive" method must be called here l #providerSupport
-                _scope.RemoveAtScope(driveName, scope);
-            }
-            catch (ItemNotFoundException)
+            var drive = _scope.GetAtScope(driveName, scope);
+            if (drive == null)
             {
                 throw new DriveNotFoundException(driveName, String.Empty, null);
             }
+            Remove(drive, scope, runtime);
         }
 
-        internal void RemoveAtAllScopes(PSDriveInfo drive)
+        internal void Remove(PSDriveInfo drive, string scope, ProviderRuntime runtime)
         {
+            // make sure the provider can clean up this drive properly
+            GetProvider(drive).RemoveDrive(drive, runtime);
+            if (String.IsNullOrEmpty(scope))
+            {
+                _scope.Remove(drive.ItemName, false);
+            }
+            else
+            {
+                _scope.RemoveAtScope(drive.ItemName, scope);
+            }
+        }
+
+        internal void RemoveAtAllScopes(PSDriveInfo drive, ProviderRuntime runtime)
+        {
+            // don't forget to give the provider the chance to clean up first
+            GetProvider(drive).RemoveDrive(drive, runtime);
             foreach (var curScope in _scope.HierarchyIterator)
             {
                 if (curScope.HasLocal(drive))
                 {
-                    //TODO: the provider's "RemoveDrive" method must be called here l #providerSupport
                     curScope.RemoveLocal(drive.Name);
                 }
             }
+        }
+
+        DriveCmdletProvider GetProvider(PSDriveInfo drive)
+        {
+            var provider = _scope.SessionState.Provider.GetInstance(drive.Provider) as DriveCmdletProvider;
+            if (provider == null)
+            {
+                throw new ArgumentException("No proper DriveCmdletProvider is associated with drive '" + drive.Name + "'.");
+            }
+            return provider;
         }
     }
 }

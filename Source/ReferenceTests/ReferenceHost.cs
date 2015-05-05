@@ -9,6 +9,21 @@ using System.Text;
 
 namespace ReferenceTests
 {
+    public class ExecutionWithErrorsException : Exception
+    {
+        public ErrorRecord[] Errors { get; set; }
+
+        public ExecutionWithErrorsException(ErrorRecord[] records)
+            : base (records.Length == 0 ? "No errors" : "First error: " + records[0].Exception.Message + " (and maybe more errors)")
+        {
+            Errors = records;
+            if (records.Length == 0)
+            {
+                return;
+            }            
+        }
+    }
+
     internal static class ReferenceHost
     {
         public static InitialSessionState InitialSessionState { get; set; }
@@ -18,73 +33,85 @@ namespace ReferenceTests
         public static string LastResults { get; private set; }
 
 
-        public static string Execute(string cmd)
+        public static string Execute(string cmd, bool throwOnError = true)
         {
-            return Execute(new string[] { cmd });
+            return Execute(new string[] { cmd }, throwOnError);
         }
 
-        public static string Execute(string[] commands)
+        public static string Execute(string[] commands, bool throwOnError = true)
         {
-            LastResults = "";
-            try
-            {
-                RawExecute(commands);
-            }
-            finally
-            {
-                if (LastRawResults != null)
-                {
-                    StringBuilder resultstr = new StringBuilder();
-                    foreach (var curPSObject in LastRawResults)
-                    {
-                        if (curPSObject != null)
-                        {
-                            resultstr.Append(curPSObject.ToString());
-                        }
-                        resultstr.Append(Environment.NewLine);
-                    }
-                    LastResults = resultstr.ToString();
-                }
-            }
+            RawExecute(commands, throwOnError);
             return LastResults;
         }
 
-        public static Collection<PSObject> RawExecute(string cmd, bool throwMethodInvocationException = true)
+        public static Collection<PSObject> RawExecute(string cmd, bool throwOnError = true)
         {
-            return RawExecute(new string[] { cmd }, throwMethodInvocationException);
+            return RawExecute(new string[] { cmd }, throwOnError);
         }
 
-        public static Collection<PSObject> RawExecute(string[] commands, bool throwMethodInvocationException = true)
+        public static Collection<PSObject> RawExecute(string[] commands, bool throwOnError = true)
         {
             LastRawResults = null;
+            LastRawErrorResults = null;
             LastUsedRunspace = InitialSessionState == null ?
                 RunspaceFactory.CreateRunspace() : RunspaceFactory.CreateRunspace(InitialSessionState);
             LastUsedRunspace.Open();
+            return RawExecuteInLastRunspace(commands, throwOnError);
+        }
+
+        public static Collection<PSObject> RawExecuteInLastRunspace(string cmd, bool throwOnError = true)
+        {
+            return RawExecuteInLastRunspace(new string[] { cmd }, throwOnError);
+        }
+
+        public static Collection<PSObject> RawExecuteInLastRunspace(string[] commands, bool throwOnError = true)
+        {
             foreach (var command in commands)
             {
                 using (var pipeline = LastUsedRunspace.CreatePipeline())
                 {
-                    pipeline.Commands.AddScript(command, true);
+                    pipeline.Commands.AddScript(command, false);
                     try
                     {
                         LastRawResults = pipeline.Invoke();
                     }
                     catch (Exception)
                     {
-                        LastRawResults = pipeline.Output.ReadToEnd();
-                        if (pipeline.Error.Count > 0)
-                        {
-                            LastRawErrorResults = pipeline.Error.ReadToEnd();
-                        }
+                        // we need to store the results
+                        LastRawResults = pipeline.Output.ReadToEnd();;
                         throw;
                     }
-                    if (throwMethodInvocationException && pipeline.Error.Count > 0)
+                    finally
                     {
-                        throw new MethodInvocationException(String.Join(Environment.NewLine, pipeline.Error.ReadToEnd()));
+                        LastRawErrorResults = pipeline.Error.ReadToEnd();
+                        MergeLastRawResultsToString();
+                    }
+                    if (throwOnError && LastRawErrorResults.Count > 0)
+                    {
+                        throw new ExecutionWithErrorsException((from err in LastRawErrorResults
+                                                                 select ((PSObject) err).BaseObject as ErrorRecord).ToArray());
                     }
                 }
             }
             return LastRawResults;
+        }
+
+        private static void MergeLastRawResultsToString()
+        {
+            LastResults = "";
+            if (LastRawResults != null)
+           {
+                StringBuilder resultstr = new StringBuilder();
+                foreach (var curPSObject in LastRawResults)
+                {
+                    if (curPSObject != null)
+                    {
+                        resultstr.Append(curPSObject.ToString());
+                    }
+                    resultstr.Append(Environment.NewLine);
+                }
+                LastResults = resultstr.ToString();
+            }
         }
 
         internal static void ImportModules(string[] modules)
@@ -109,6 +136,11 @@ namespace ReferenceTests
             return (from obj in LastRawErrorResults
                     let error = (PSObject)obj
                     select (ErrorRecord)error.BaseObject).ToArray();
+        }
+
+        public static object GetVariableValue(string name)
+        {
+            return LastUsedRunspace.SessionStateProxy.GetVariable(name);
         }
     }
 }

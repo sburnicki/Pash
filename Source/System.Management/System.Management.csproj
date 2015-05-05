@@ -3,7 +3,7 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProductVersion>9.0.21022</ProductVersion>
+    <ProductVersion>8.0.30703</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>{C5E303EC-5684-4C95-B0EC-2593E6662403}</ProjectGuid>
     <OutputType>Library</OutputType>
@@ -26,6 +26,8 @@
     <WarningLevel>4</WarningLevel>
     <TreatWarningsAsErrors Condition=" '$(OS)' != 'Windows_NT' ">false</TreatWarningsAsErrors>
     <TreatWarningsAsErrors Condition=" '$(OS)' == 'Windows_NT' ">true</TreatWarningsAsErrors>
+    <RunCodeAnalysis>true</RunCodeAnalysis>
+    <CodeAnalysisRuleSet>..\..\Tools\FxCop\PashRules.Warnings.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -34,6 +36,8 @@
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <RunCodeAnalysis>true</RunCodeAnalysis>
+    <CodeAnalysisRuleSet>..\..\Tools\FxCop\PashRules.Errors.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x86'">
     <DebugSymbols>true</DebugSymbols>
@@ -80,6 +84,8 @@
     <Compile Include="Automation\ArgumentTransformationMetadataException.cs" />
     <Compile Include="Automation\AuthorizationManager.cs" />
     <Compile Include="Automation\ForEachObjectCommand.cs" />
+    <Compile Include="Automation\OutputTypeAttribute.cs" />
+    <Compile Include="Automation\PSTypeName.cs" />
     <Compile Include="Automation\Runspaces\AssemblyConfigurationEntry.cs" />
     <Compile Include="Automation\Runspaces\FormatConfigurationEntry.cs" />
     <Compile Include="Automation\Runspaces\TypeConfigurationEntry.cs" />
@@ -391,6 +397,7 @@
     <Compile Include="Automation\WildcardOptions.cs" />
     <Compile Include="Automation\WildcardPattern.cs" />
     <Compile Include="Automation\WildcardPatternException.cs" />
+    <Compile Include="Automation\WorkflowInfo.cs" />
     <Compile Include="Extensions\EnumerableExtensions.cs" />
     <Compile Include="Extensions\Irony\ValidateTokenEventArgsExtensions.cs" />
     <Compile Include="Extensions\JoinStringExtensions.cs" />
@@ -411,6 +418,7 @@
     <Compile Include="Microsoft.PowerShell\Commands\GetHelpCommand.cs" />
     <Compile Include="Microsoft.PowerShell\Commands\GetHistoryCommand.cs" />
     <Compile Include="Microsoft.PowerShell\Commands\GetPSSnapinCommand.cs" />
+    <Compile Include="Microsoft.PowerShell\Commands\HistoryInfo.cs" />
     <Compile Include="Microsoft.PowerShell\Commands\Internal\Format\FrontEndCommandBase.cs" />
     <Compile Include="Microsoft.PowerShell\Commands\RemovePSSnapinCommand.cs" />
     <Compile Include="Microsoft.PowerShell\Commands\SessionStateProviderBase.cs" />
@@ -421,6 +429,16 @@
     </Compile>
     <Compile Include="Microsoft.PowerShell\PSCorePSSnapIn.cs" />
     <Compile Include="Pash\BitwiseOperation.cs" />
+    <Compile Include="Pash\Implementation\Commands\EncodingMapping.cs" />
+    <Compile Include="Pash\Implementation\Commands\FileContentReader.cs" />
+    <Compile Include="Pash\Implementation\Commands\FileContentWriter.cs" />
+    <Compile Include="Pash\Implementation\Commands\SessionStateContentReader.cs" />
+    <Compile Include="Pash\Implementation\Commands\SessionStateContentWriter.cs" />
+    <Compile Include="Pash\Implementation\CommonCmdlet.cs" />
+    <Compile Include="Pash\Implementation\CommonCmdletParameters.cs" />
+    <Compile Include="Pash\Implementation\ExecutionVisitorHelper\FileRedirectionOperator.cs" />
+    <Compile Include="Pash\Implementation\ExecutionVisitorHelper\FileRedirectionVisitor.cs" />
+    <Compile Include="Pash\Implementation\ExecutionVisitorHelper\RedirectionVisitor.cs" />
     <Compile Include="Pash\Implementation\getline.cs" />
     <Compile Include="Pash\Implementation\CommandManager.cs" />
     <Compile Include="Pash\Implementation\CommandProcessor.cs" />
@@ -472,7 +490,6 @@
     <Compile Include="Pash\Implementation\ScopeUsages.cs" />
     <Compile Include="Automation\Runspaces\InvalidPipelineStateException.cs" />
     <Compile Include="Pash\Implementation\CmdletParameterBinder.cs" />
-    <Compile Include="Pash\Implementation\ExitException.cs" />
     <Compile Include="Pash\Implementation\ReturnException.cs" />
     <Compile Include="Automation\PSProperty.cs" />
     <Compile Include="PSFieldProperty.cs" />
@@ -484,6 +501,35 @@
     <Compile Include="Pash\Implementation\TabExpansionProvider.cs" />
     <Compile Include="Extensions\StringExtensions.cs" />
     <Compile Include="Pash\Implementation\ArithmeticOperations.cs" />
+    <Compile Include="Automation\FlowControlException.cs" />
+    <Compile Include="Automation\ExitException.cs" />
+    <Compile Include="Automation\LoopFlowException.cs" />
+    <Compile Include="Automation\ContinueException.cs" />
+    <Compile Include="Automation\BreakException.cs" />
+    <Compile Include="Pash\Implementation\ExecutionVisitorHelper\SettableExpression.cs" />
+    <Compile Include="Pash\Implementation\ExecutionVisitorHelper\SettableIndexExpression.cs" />
+    <Compile Include="Pash\Implementation\ExecutionVisitorHelper\SettableMemberExpression.cs" />
+    <Compile Include="Pash\Implementation\ExecutionVisitorHelper\SettableVariableExpression.cs" />
+    <Compile Include="Pash\Implementation\ScriptBlockParameterBinder.cs" />
+    <Compile Include="Microsoft.PowerShell\Commands\ImportModuleCommand.cs" />
+    <Compile Include="Microsoft.PowerShell\Commands\ModuleCmdletBase.cs" />
+    <Compile Include="Microsoft.PowerShell\Commands\RemoveModuleCommand.cs" />
+    <Compile Include="Pash\Implementation\ModuleIntrinsics.cs" />
+    <Compile Include="Microsoft.PowerShell\Commands\ExportModuleMemberCommand.cs" />
+    <Compile Include="Pash\Implementation\ModuleLoader.cs" />
+    <Compile Include="Pash\Implementation\CmdletIntrinsics.cs" />
+    <Compile Include="Automation\ModuleType.cs" />
+    <Compile Include="Automation\ModuleAccessMode.cs" />
+    <Compile Include="Extensions\DictionaryExtensions.cs" />
+    <Compile Include="Microsoft.PowerShell\Commands\GetModuleCommand.cs" />
+    <Compile Include="Pash\Implementation\SessionStateIntrinsics.cs" />
+    <Compile Include="Pash\Implementation\ISessionStateIntrinsics.cs" />
+    <Compile Include="Pash\Implementation\Parser.cs" />
+    <Compile Include="Pash\Implementation\PathGlobber.cs" />
+    <Compile Include="Automation\CmdletProviderIntrinsicsBase.cs" />
+    <Compile Include="Pash\Implementation\IncludeExcludeFilter.cs" />
+    <Compile Include="Pash\Implementation\SecureStringReader.cs" />
+    <Compile Include="Pash\Implementation\CredentialMessages.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
@@ -502,4 +548,5 @@
   <ItemGroup>
     <Content Include="Pash\ParserIntrinsics\README.TXT" />
   </ItemGroup>
+  <ItemGroup />
 </Project>

@@ -4,6 +4,7 @@ using Pash.Implementation;
 using System.Management.Automation.Runspaces;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
+using Extensions.Reflection;
 
 namespace System.Management.Automation
 {
@@ -43,7 +44,14 @@ namespace System.Management.Automation
         {
             if (!_beganProcessing)
             {
-                Command.DoBeginProcessing();
+                try
+                {
+                    Command.DoBeginProcessing();
+                }
+                catch(Exception e)
+                {
+                    HandleInvocationException(e);
+                }
                 _beganProcessing = true;
             }
         }
@@ -66,8 +74,25 @@ namespace System.Management.Automation
             foreach (var curInput in inputObjects)
             {
                 // TODO: determine the correct second arg: true if this commandProcessor is the first command in pipeline
-                _argumentBinder.BindPipelineParameters(curInput, true);
-                Command.DoProcessRecord();
+                try
+                {
+                    _argumentBinder.BindPipelineParameters(curInput, true);
+                }
+                catch (ParameterBindingException e)
+                {
+                    // if we failed to bind this parameter, we only skip this one record and continue
+                    CommandRuntime.WriteError(e.ErrorRecord);
+                    continue;
+                }
+
+                try
+                {
+                    Command.DoProcessRecord();
+                }
+                catch(Exception e)
+                {
+                    HandleInvocationException(e);
+                }
             }
             _argumentBinder.RestoreCommandLineParameterValues();
         }
@@ -77,8 +102,17 @@ namespace System.Management.Automation
         /// </summary>
         public override void EndProcessing()
         {
-            Command.DoEndProcessing();
-            ExecutionContext.SetVariable("global:?", true); // only false if we got an exception
+            ExecutionContext.SetSuccessVariable(false); // we set it true if we succeed
+            try
+            {
+                Command.DoEndProcessing();
+                ExecutionContext.SetSuccessVariable(true); // only false if we got an exception
+                ProcessRedirects();
+            }
+            catch(Exception e)
+            {
+                HandleInvocationException(e);
+            }
         }
 
         /// <summary>
@@ -96,15 +130,36 @@ namespace System.Management.Automation
             {
                 var current = oldParameters[i];
                 var peek = (i < numParams - 1) ? oldParameters[i + 1] : null;
-                if (peek != null &&
-                    !String.IsNullOrEmpty(current.Name) &&
-                    current.Value == null &&
-                    !IsSwitchParameter(current.Name) &&
-                    String.IsNullOrEmpty(peek.Name))
+                var hasValidName = !String.IsNullOrEmpty(current.Name);
+                // if we have a switch parameter, set default value or pre-convert to bool if numeric
+                if (hasValidName && IsSwitchParameter(current.Name))
+                {
+                    // if null (=unset) it's true; even if it's explicitly set to null
+                    object value = current.Value;
+                    if (current.Value == null)
+                    {
+                        Parameters.Add(current.Name, true);
+                        continue;
+                    }
+                    // strange thing in PS: While LanguagePrimitives aren't able to convert from numerics to
+                    // SwitchParameter, it does work with parameters. So we check it here
+                    else if (PSObject.Unwrap(current.Value).GetType().IsNumeric())
+                    {
+                        value = LanguagePrimitives.ConvertTo<bool>(current.Value);
+                    }
+                    Parameters.Add(current.Name, value);
+                }
+                // if the current parameter has no argument (and not explicilty set to null), try to merge the next
+                else if (peek != null &&
+                         hasValidName &&
+                         current.Value == null &&
+
+                         String.IsNullOrEmpty(peek.Name))
                 {
                     Parameters.Add(current.Name, peek.Value);
                     i++; // skip next element as it was merged
                 }
+                // otherwise we have a usual parameter/argument set
                 else
                 {
                     Parameters.Add(current);
@@ -124,6 +179,18 @@ namespace System.Management.Automation
                 // seems to be ambiguous. well, this is the wrong place to throw the error, it will be thrown later on
             }
             return false;
+        }
+
+        private void HandleInvocationException(Exception e)
+        {
+            // called when one of the processing phases resultet in an exception.
+            // For now: Handle the exception type
+            // TODO: This would be the place to invoke rollbacks if we support transactions
+            if ((e is CmdletInvocationException) || (e is CmdletProviderInvocationException))
+            {
+                throw e;
+            }
+            throw new CmdletInvocationException(e.Message, e);
         }
     }
 }

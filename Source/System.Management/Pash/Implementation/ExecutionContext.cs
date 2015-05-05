@@ -5,6 +5,7 @@ using System.Management.Automation;
 using System.Management.Automation.Host;
 using System.Management.Automation.Runspaces;
 using System.Collections.ObjectModel;
+using System.Collections;
 
 namespace Pash.Implementation
 {
@@ -37,7 +38,12 @@ namespace Pash.Implementation
 
         public ExecutionContext Clone(ScopeUsages scopeUsage = ScopeUsages.CurrentScope)
         {
-            var sstate = (scopeUsage == ScopeUsages.CurrentScope) ? SessionState : new SessionState(SessionState);
+            return Clone(SessionState, scopeUsage);
+        }
+
+        public ExecutionContext Clone(SessionState sessionState, ScopeUsages scopeUsage)
+        {
+            var sstate = (scopeUsage == ScopeUsages.CurrentScope) ? sessionState : new SessionState(sessionState);
             if (scopeUsage == ScopeUsages.NewScriptScope)
             {
                 sstate.IsScriptScope = true;
@@ -119,20 +125,30 @@ namespace Pash.Implementation
 
         internal bool WriteSideEffectsToPipeline { get; set; }
 
-        public void AddToErrorVariable(ErrorRecord errorRecord)
+        internal void AddToErrorVariable(object error)
         {
             var errorRecordsVar = GetVariable("Error");
-            var records = errorRecordsVar.Value as Collection<ErrorRecord>;
+            var records = errorRecordsVar.Value as ArrayList;
             if (records == null)
             {
                 // TODO: this should never happen as the variable is const. but anyway
                 return;
             }
             // make sure it's not added multiple times (e.g. *same* exception thrown through multiple nested pipelines)
-            if (!records.Contains(errorRecord))
+            if (!records.Contains(error))
             {
-                records.Insert(0, errorRecord);
+                records.Insert(0, error);
             }
+        }
+
+        internal void SetLastExitCodeVariable(int exitCode)
+        {
+            SetVariable("global:LASTEXITCODE", exitCode);
+        }
+
+        internal void SetSuccessVariable(bool success)
+        {
+            SetVariable("global:?", success);
         }
     }
 }

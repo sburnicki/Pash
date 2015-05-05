@@ -1,5 +1,6 @@
 ﻿// Copyright (C) Pash Contributors. License: GPL/BSD. See https://github.com/Pash-Project/Pash/
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Management.Automation;
@@ -7,6 +8,8 @@ using System.Management.Automation.Provider;
 using System.Security;
 using System.Security.AccessControl;
 using System.Management;
+using System.Management.Pash.Implementation;
+using System.Text;
 
 namespace Microsoft.PowerShell.Commands
 {
@@ -17,6 +20,7 @@ namespace Microsoft.PowerShell.Commands
         IPropertyCmdletProvider,
         ISecurityDescriptorCmdletProvider
     {
+        internal const string FallbackDriveName = "File";
         private enum ItemType {
             Unknown,
             Directory,
@@ -29,12 +33,32 @@ namespace Microsoft.PowerShell.Commands
         {
         }
 
-        protected override void CopyItem(Path path, Path destinationPath, bool recurse)
+        protected override string NormalizeRelativePath(string path, string basePath)
+        {
+            var normPath = new Path(path).NormalizeSlashes();
+            var normBase = new Path(basePath).NormalizeSlashes();
+            if (!normPath.StartsWith(normBase))
+            {
+                var ex = new PSArgumentException("Path is outside of base path!", "PathOutsideBasePath",
+                    ErrorCategory.InvalidArgument);
+                WriteError(ex.ErrorRecord);
+                return null;
+            }
+
+            return new Path(path.Substring(basePath.Length)).TrimStartSlash().ToString();
+        }
+
+        protected override void CopyItem(string path, string destinationPath, bool recurse)
         {
             throw new NotImplementedException();
         }
 
-        protected override void GetChildItems(Path path, bool recurse)
+        protected override string MakePath(string parent, string child)
+        {
+            return new Path(parent).Combine(child).ToString();
+        }
+
+        protected override void GetChildItems(string path, bool recurse)
         {
             if (string.IsNullOrEmpty(path))
             {
@@ -107,14 +131,15 @@ namespace Microsoft.PowerShell.Commands
             }
         }
 
-        protected override Path GetChildName(Path path)
+        protected override string GetChildName(string path)
         {
+            path = NormalizePath(path);
             if (string.IsNullOrEmpty(path))
             {
                 throw new NullReferenceException("Path can't be null");
             }
 
-            return path.GetChildNameOrSelfIfNoChild();
+            return new Path(path).GetChildNameOrSelfIfNoChild();
             //
             //            path = PathIntrinsics.NormalizePath(path);
             //            path = path.TrimEnd('\\');
@@ -128,21 +153,30 @@ namespace Microsoft.PowerShell.Commands
             //            return path.Substring(num + 1);
         }
 
-        protected override void GetChildNames(Path path, ReturnContainers returnContainers)
+        protected override void GetChildNames(string path, ReturnContainers returnContainers)
         {
-            throw new NotImplementedException();
+            if (path == String.Empty)
+            {
+                path = ".";
+            }
+
+            var names = GetChildNamesPrivate(path);
+            foreach (var name in names)
+            {
+                ProviderRuntime.WriteObject(name);
+            }
         }
 
-        protected override void GetItem(Path path)
+        protected override void GetItem(string path)
         {
             bool isContainer = false;
             var fileSystemInfo = GetFileSystemInfo(path, ref isContainer, false);
             WriteItemObject(fileSystemInfo, fileSystemInfo.FullName, isContainer);
         }
 
-        protected override Path GetParentPath(Path path, Path root)
+        protected override string GetParentPath(string path, string root)
         {
-            Path parentPath = base.GetParentPath(path, root);
+            Path parentPath = new Path(path).GetParentPath(root);
 
             // TODO: deal with UNC
             if (!path.StartsWith("\\\\")) // UNC?
@@ -152,7 +186,7 @@ namespace Microsoft.PowerShell.Commands
             return parentPath;
         }
 
-        private Path MakeSlashedPath(Path path)
+        private string MakeSlashedPath(string path)
         {
             // Make sure that the path is ended bith '\'
             int index = path.IndexOf(':');
@@ -163,72 +197,74 @@ namespace Microsoft.PowerShell.Commands
             return path;
         }
 
-        protected override bool HasChildItems(Path path) { throw new NotImplementedException(); }
+        protected override bool HasChildItems(string path)
+        {
+            return GetChildNamesPrivate(path).Count > 0;
+        }
 
         protected override Collection<PSDriveInfo> InitializeDefaultDrives()
         {
-            Collection<PSDriveInfo> collection = new Collection<PSDriveInfo>();
-
-            // TODO: Console.WriteLine("Mono: Before GetDrives");
-            var drives = System.IO.DriveInfo.GetDrives();
-            // TODO: Console.WriteLine("Mono: After GetDrives");
-
-            System.Diagnostics.Debug.WriteLine("Number of drives: " + ((drives == null) ? "Null drives" : drives.Length.ToString()));
-
-            // TODO: Resolve hack to get around Mono bug where System.IO.DriveInfo.GetDrives() returns a single blank drive.
-            if (MonoHasBug11923())
+            /*
+             * The concept of drives in Powershell is obviously inspired by the
+             * Windows file system. However, in combination with providers, this concept
+             * has much more power as it allows access to arbitrary data stores.
+             * Handling paths is therefore a little bit more complicated, because we don't
+             * just deal with the FS. As a consequence, we need to make sure that
+             * drive qualified path can be identified with the colon and that drives have valid
+             * names.
+             * On non-Windows machines, mono would return "drives" like '/', '/proc', etc, because
+             * that's what's closest to Windows-drives. However, we can't adopt these drives,
+             * because their names are invalid and wouldn't be native on *nix systems with a colon.
+             * So instead, if we have a platform with mono drives that don't include a colon itself,
+             * and therefore aren't compatible to the PS/Pash drive concept, we will use a single
+             * default drive called "File" (see FallbackDriveName) instead to uniquely access the
+             * root of the file system.
+             * This drive get's a hidden flag, so it will be ignored in various places when Pash
+             * would for example display the path. Doing this should result in a feeling that is native
+             * for the platform.
+             */
+            var fsDrives = System.IO.DriveInfo.GetDrives();
+            var drives = (from fd in fsDrives
+                          where fd.Name.Contains(":")
+                          select NewDrive(fd)).ToList();
+            if (drives.Count == 0)
             {
-                PSDriveInfo info = new PSDriveInfo("/", base.ProviderInfo, "/", "Root", null);
-                info.RemovableDrive = false;
-
-                collection.Add(info);
-                return collection;
+                var root = System.IO.Path.GetPathRoot(Environment.CurrentDirectory);
+                var defaultDrive = new PSDriveInfo(FallbackDriveName, ProviderInfo, root, "Root", null);
+                defaultDrive.Hidden = true;
+                drives.Add(defaultDrive);
             }
+            return new Collection<PSDriveInfo>(drives);
+        }
 
-            if (drives != null)
+        private PSDriveInfo NewDrive(System.IO.DriveInfo fsDrive)
+        {
+            Path name = fsDrive.Name;
+            var iColon = fsDrive.Name.IndexOf(":");
+            if (iColon > 0)
+                name = fsDrive.Name.Substring(0, iColon);
+
+            Path description = string.Empty;
+            Path root = fsDrive.Name;
+            if (fsDrive.DriveType == System.IO.DriveType.Fixed)
             {
-                foreach (System.IO.DriveInfo driveInfo in drives)
+                try
                 {
-                    System.Diagnostics.Debug.WriteLine(string.Format("drive '{0}' type '{1}' root '{2}'", driveInfo.Name, driveInfo.DriveType.ToString(), driveInfo.RootDirectory));
-
-                    // Support for Mono names - there are no ':' (colon) in the name
-                    Path name = driveInfo.Name;
-                    if (driveInfo.Name.IndexOf(':') > 0)
-                        name = driveInfo.Name.Substring(0, 1);
-
-                    Path description = string.Empty;
-                    Path root = driveInfo.Name;
-                    if (driveInfo.DriveType == System.IO.DriveType.Fixed)
-                    {
-                        try
-                        {
-                            description = driveInfo.VolumeLabel;
-                            root = driveInfo.RootDirectory.FullName;
-                        }
-                        catch
-                        {
-                        }
-                    }
-                    PSDriveInfo info = new PSDriveInfo(name, base.ProviderInfo, root, description, null);
-                    info.RemovableDrive = driveInfo.DriveType != System.IO.DriveType.Fixed;
-
-                    collection.Add(info);
+                    description = fsDrive.VolumeLabel;
+                    root = fsDrive.RootDirectory.FullName;
+                }
+                catch
+                {
                 }
             }
-
-            return collection;
+            PSDriveInfo info = new PSDriveInfo(name, base.ProviderInfo, root, description, null);
+            info.RemovableDrive = fsDrive.DriveType != System.IO.DriveType.Fixed;
+            return info;
         }
 
-        // See: https://bugzilla.xamarin.com/show_bug.cgi?id=11923
-        static bool MonoHasBug11923()
-        {
-            var drives = System.IO.DriveInfo.GetDrives();
-            return drives.Length == 1 && drives[0].Name.Length == 0;
-        }
+        protected override void InvokeDefaultAction(string path) { throw new NotImplementedException(); }
 
-        protected override void InvokeDefaultAction(Path path) { throw new NotImplementedException(); }
-
-        protected override void NewItem(System.Management.Path path, string itemTypeName, object newItemValue)
+        protected override void NewItem(string path, string itemTypeName, object newItemValue)
         {
             path = NormalizePath(path);
             var type = GetItemType(itemTypeName);
@@ -274,17 +310,19 @@ namespace Microsoft.PowerShell.Commands
             }
         }
 
-        protected override bool IsItemContainer(Path path)
+        protected override bool IsItemContainer(string path)
         {
+            path = path == "" ? "." : path; // Workaround until our globber handles relative paths
             path = NormalizePath(path);
 
             return (new System.IO.DirectoryInfo(path)).Exists;
         }
 
-        protected override bool IsValidPath(Path path) { throw new NotImplementedException(); }
+        protected override bool IsValidPath(string path) { throw new NotImplementedException(); }
 
-        protected override bool ItemExists(Path path)
+        protected override bool ItemExists(string path)
         {
+            path = path == "" ? "." : path; // Workaround until our globber handles relative paths
             path = NormalizePath(path);
             try
             {
@@ -305,7 +343,7 @@ namespace Microsoft.PowerShell.Commands
             return false;
         }
 
-        protected override void MoveItem(Path path, Path destination) { throw new NotImplementedException(); }
+        protected override void MoveItem(string path, string destination) { throw new NotImplementedException(); }
 
         protected override PSDriveInfo NewDrive(PSDriveInfo drive)
         {
@@ -328,18 +366,33 @@ namespace Microsoft.PowerShell.Commands
 
         protected override ProviderInfo Start(ProviderInfo providerInfo)
         {
-            if ((providerInfo != null) && string.IsNullOrEmpty(providerInfo.Home))
+            if (providerInfo == null || !string.IsNullOrEmpty(providerInfo.Home))
             {
-                Path homeDrive = Environment.GetEnvironmentVariable("HOMEDRIVE");
-                Path homePath = Environment.GetEnvironmentVariable("HOMEPATH");
-                if (!string.IsNullOrEmpty(homeDrive) && !string.IsNullOrEmpty(homePath))
+                return providerInfo;
+            }
+
+            string path = null;
+            Path homeDrive = Environment.GetEnvironmentVariable("HOMEDRIVE");
+            Path homePath = Environment.GetEnvironmentVariable("HOMEPATH");
+            if (!string.IsNullOrEmpty(homeDrive) && !string.IsNullOrEmpty(homePath))
+            {
+                path = MakePath(homeDrive, homePath);
+            }
+            else
+            {
+                // FIXME: taken from Path.ResolveTilde(). Make sure to clean all that mess up...
+                path = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+                // HACK: Use $Env:HOME until Mono 2.10 dies out.
+                if (path == "")
                 {
-                    Path path = MakePath(homeDrive, homePath);
-                    if (System.IO.Directory.Exists(path))
-                    {
-                        providerInfo.Home = path;
-                    }
+                    path = Environment.GetEnvironmentVariable("HOME");
                 }
+            }
+
+            if (System.IO.Directory.Exists(path))
+            {
+                providerInfo.Home = path;
             }
             return providerInfo;
         }
@@ -362,32 +415,42 @@ namespace Microsoft.PowerShell.Commands
 
         #region IContentCmdletProvider Members
 
-        public void ClearContent(Path path)
+        public void ClearContent(string path)
         {
-            throw new NotImplementedException();
+            path = NormalizePath(path);
+            if (!ItemExists(path))
+            {
+                throw new ItemNotFoundException(string.Format("Cannot find path '{0}' because it does not exist.", path));
+            }
+
+            using (var writer = new System.IO.StreamWriter(path, false, Encoding.ASCII))
+            {
+            }
         }
 
-        public object ClearContentDynamicParameters(Path path)
+        public object ClearContentDynamicParameters(string path)
         {
             return null;
         }
 
-        public IContentReader GetContentReader(Path path)
+        public IContentReader GetContentReader(string path)
         {
-            throw new NotImplementedException();
+            path = NormalizePath(path);
+            return new FileContentReader(path);
         }
 
-        public object GetContentReaderDynamicParameters(Path path)
+        public object GetContentReaderDynamicParameters(string path)
         {
             return new FileSystemContentReaderDynamicParameters();
         }
 
-        public IContentWriter GetContentWriter(Path path)
+        public IContentWriter GetContentWriter(string path)
         {
-            throw new NotImplementedException();
+            path = NormalizePath(path);
+            return new FileContentWriter(path);
         }
 
-        public object GetContentWriterDynamicParameters(Path path)
+        public object GetContentWriterDynamicParameters(string path)
         {
             return new FileSystemContentWriterDynamicParameters();
         }
@@ -396,32 +459,32 @@ namespace Microsoft.PowerShell.Commands
 
         #region IPropertyCmdletProvider Members
 
-        public void ClearProperty(Path path, Collection<string> propertyToClear)
+        public void ClearProperty(string path, Collection<string> propertyToClear)
         {
             throw new NotImplementedException();
         }
 
-        public object ClearPropertyDynamicParameters(Path path, Collection<string> propertyToClear)
+        public object ClearPropertyDynamicParameters(string path, Collection<string> propertyToClear)
         {
             throw new NotImplementedException();
         }
 
-        public void GetProperty(Path path, Collection<string> providerSpecificPickList)
+        public void GetProperty(string path, Collection<string> providerSpecificPickList)
         {
             throw new NotImplementedException();
         }
 
-        public object GetPropertyDynamicParameters(Path path, Collection<string> providerSpecificPickList)
+        public object GetPropertyDynamicParameters(string path, Collection<string> providerSpecificPickList)
         {
             throw new NotImplementedException();
         }
 
-        public void SetProperty(Path path, PSObject propertyValue)
+        public void SetProperty(string path, PSObject propertyValue)
         {
             throw new NotImplementedException();
         }
 
-        public object SetPropertyDynamicParameters(Path path, PSObject propertyValue)
+        public object SetPropertyDynamicParameters(string path, PSObject propertyValue)
         {
             throw new NotImplementedException();
         }
@@ -430,12 +493,12 @@ namespace Microsoft.PowerShell.Commands
 
         #region ISecurityDescriptorCmdletProvider Members
 
-        public void GetSecurityDescriptor(Path path, AccessControlSections includeSections)
+        public void GetSecurityDescriptor(string path, AccessControlSections includeSections)
         {
             throw new NotImplementedException();
         }
 
-        public ObjectSecurity NewSecurityDescriptorFromPath(Path path, AccessControlSections includeSections)
+        public ObjectSecurity NewSecurityDescriptorFromPath(string path, AccessControlSections includeSections)
         {
             throw new NotImplementedException();
         }
@@ -445,12 +508,30 @@ namespace Microsoft.PowerShell.Commands
             throw new NotImplementedException();
         }
 
-        public void SetSecurityDescriptor(Path path, ObjectSecurity securityDescriptor)
+        public void SetSecurityDescriptor(string path, ObjectSecurity securityDescriptor)
         {
             throw new NotImplementedException();
         }
 
         #endregion
+
+        internal string NormalizePath(string path)
+        {
+            var p = new Path(path).NormalizeSlashes();
+            return p.ToString();
+        }
+
+        private List<string> GetChildNamesPrivate(string path)
+        {
+            path = path == "" ? "." : path; // Workaround until our globber handles relative paths
+            path = NormalizePath(path);
+            System.IO.DirectoryInfo directory = new System.IO.DirectoryInfo(path);
+            if (!directory.Exists)
+            {
+                return new List<string> { new System.IO.FileInfo(path).Name };
+            }
+            return (from fs in directory.GetFileSystemInfos() select fs.Name).ToList();
+        }
 
         private ItemType GetItemType(string type)
         {
@@ -466,7 +547,7 @@ namespace Microsoft.PowerShell.Commands
             return ItemType.Unknown;
         }
 
-        private System.IO.FileSystemInfo GetFileSystemInfo(Path path, ref bool isContainer, bool showHidden)
+        private System.IO.FileSystemInfo GetFileSystemInfo(string path, ref bool isContainer, bool showHidden)
         {
             path = NormalizePath(path);
             var fi = new System.IO.FileInfo(path);

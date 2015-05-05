@@ -4,9 +4,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading;
-using System.Collections.ObjectModel;
 using Microsoft.PowerShell.Commands;
 using System.Management.Automation.Runspaces;
+using System.Collections;
+using System.Collections.ObjectModel;
 
 namespace System.Management.Automation.Runspaces
 {
@@ -211,7 +212,7 @@ namespace System.Management.Automation.Runspaces
             initialSessionState.Variables.Add(new SessionStateVariableEntry("true", true, "", ScopedItemOptions.Constant));
             initialSessionState.Variables.Add(new SessionStateVariableEntry("false", false, "", ScopedItemOptions.Constant));
             initialSessionState.Variables.Add(new SessionStateVariableEntry("null", null, "", ScopedItemOptions.Constant));
-            initialSessionState.Variables.Add(new SessionStateVariableEntry("Error", new Collection<ErrorRecord>(), "Last errors", ScopedItemOptions.Constant));
+            initialSessionState.Variables.Add(new SessionStateVariableEntry("Error", new ArrayList(), "Last errors", ScopedItemOptions.Constant));
             initialSessionState.Variables.Add(new SessionStateVariableEntry("?", true, "Last command success", ScopedItemOptions.Constant));
         }
 
@@ -388,6 +389,7 @@ namespace System.Management.Automation.Runspaces
             initialSessionState.Commands.Add(new SessionStateAliasEntry("set", "Set-Variable", "", ScopedItemOptions.AllScope));
             initialSessionState.Commands.Add(new SessionStateAliasEntry("si", "Set-Item", "", ScopedItemOptions.ReadOnly | ScopedItemOptions.AllScope));
             initialSessionState.Commands.Add(new SessionStateAliasEntry("sl", "Set-Location", "", ScopedItemOptions.ReadOnly | ScopedItemOptions.AllScope));
+            initialSessionState.Commands.Add(new SessionStateAliasEntry("sls", "Select-String", "", ScopedItemOptions.ReadOnly | ScopedItemOptions.AllScope));
             initialSessionState.Commands.Add(new SessionStateAliasEntry("swmi", "Set-WMIInstance", "", ScopedItemOptions.ReadOnly | ScopedItemOptions.AllScope));
             initialSessionState.Commands.Add(new SessionStateAliasEntry("sleep", "Start-Sleep", "", ScopedItemOptions.ReadOnly | ScopedItemOptions.AllScope));
             initialSessionState.Commands.Add(new SessionStateAliasEntry("sort", "Sort-Object", "", ScopedItemOptions.ReadOnly | ScopedItemOptions.AllScope));

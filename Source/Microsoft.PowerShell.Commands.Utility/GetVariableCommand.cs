@@ -4,6 +4,7 @@ using System.Management.Automation;
 namespace Microsoft.PowerShell.Commands
 {
     [Cmdlet("Get", "Variable")]
+    [OutputType(typeof(PSVariable))]
     public class GetVariableCommand : PSCmdlet
     {
         [Parameter]
@@ -18,6 +19,10 @@ namespace Microsoft.PowerShell.Commands
         [Parameter]
         public SwitchParameter ValueOnly { get; set; }
 
+        [Parameter]
+        [ValidateNotNullOrEmpty]
+        public string Scope { get; set; }
+
         public GetVariableCommand()
         {
         }
@@ -26,7 +31,8 @@ namespace Microsoft.PowerShell.Commands
         {
             foreach (string name in Name)
             {
-                PSVariable variable = SessionState.PSVariable.Get(name);
+                PSVariable variable = Scope == null ? SessionState.PSVariable.Get(name)
+                                                    : SessionState.PSVariable.GetAtScope(name, Scope);
 
                 if (variable != null)
                 {

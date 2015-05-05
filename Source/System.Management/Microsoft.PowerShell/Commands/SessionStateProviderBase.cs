@@ -6,6 +6,7 @@ using System.Text;
 using System.Management.Automation.Provider;
 using System.Management.Automation;
 using System.Management;
+using System.Management.Pash.Implementation;
 
 namespace Microsoft.PowerShell.Commands
 {
@@ -15,13 +16,12 @@ namespace Microsoft.PowerShell.Commands
         {
         }
 
-        protected override void ClearItem(Path path) { throw new NotImplementedException(); }
-        protected override void CopyItem(Path path, Path copyPath, bool recurse) { throw new NotImplementedException(); }
+        protected override void ClearItem(string path) { throw new NotImplementedException(); }
+        protected override void CopyItem(string path, string copyPath, bool recurse) { throw new NotImplementedException(); }
 
-        protected override void GetChildItems(Path path, bool recurse)
+        protected override void GetChildItems(string path, bool recurse)
         {
-            if (path == "\\")
-                path = string.Empty;
+            path = NormalizePath(path);
 
             if (string.IsNullOrEmpty(path))
             {
@@ -43,14 +43,48 @@ namespace Microsoft.PowerShell.Commands
             }
         }
 
-        protected override void GetChildNames(Path path, ReturnContainers returnContainers) { throw new NotImplementedException(); }
-        protected override void GetItem(Path name) { throw new NotImplementedException(); }
-        protected override bool HasChildItems(Path path) { throw new NotImplementedException(); }
-        protected override bool IsValidPath(Path path) { throw new NotImplementedException(); }
-
-        protected override bool ItemExists(Path path)
+        protected override void GetChildNames(string path, ReturnContainers returnContainers)
         {
-            if (string.IsNullOrEmpty(path) || path.IsRootPath())
+            path = NormalizePath(path);
+
+            // check for a named child
+            if (path.Length > 0)
+            {
+                object item = GetSessionStateItem(path);
+                if (item != null)
+                {
+                    WriteItemObject(path, path, false);
+                }
+                return;
+            }
+            // otherwise names of all children
+            IDictionary sessionStateTable = GetSessionStateTable();
+            foreach (DictionaryEntry entry in sessionStateTable)
+            {
+                var name = (string)entry.Key;
+                WriteItemObject(name, name, false);
+            }
+        }
+
+        protected override void GetItem(string path) {
+            path = NormalizePath(path);
+            if (path.Length == 0)
+            {
+                WriteItemObject(PSDriveInfo, path, true);
+            }
+            object item = GetSessionStateItem(path);
+            if (item != null)
+            {
+                WriteItemObject(item, path, false);
+            }
+        }
+
+        protected override bool HasChildItems(string path) { throw new NotImplementedException(); }
+        protected override bool IsValidPath(string path) { throw new NotImplementedException(); }
+
+        protected override bool ItemExists(string path)
+        {
+            if (string.IsNullOrEmpty(path) || new Path(path).IsRootPath())
             {
                 return true;
             }
@@ -58,10 +92,10 @@ namespace Microsoft.PowerShell.Commands
             return null != GetSessionStateItem(path);
         }
 
-        protected override void NewItem(Path path, string type, object newItem) { throw new NotImplementedException(); }
-        protected override void RemoveItem(Path path, bool recurse) { throw new NotImplementedException(); }
-        protected override void RenameItem(Path name, Path newName) { throw new NotImplementedException(); }
-        protected override void SetItem(Path name, object value) { throw new NotImplementedException(); }
+        protected override void NewItem(string path, string type, object newItem) { throw new NotImplementedException(); }
+        protected override void RemoveItem(string path, bool recurse) { throw new NotImplementedException(); }
+        protected override void RenameItem(string name, string newName) { throw new NotImplementedException(); }
+        protected override void SetItem(string path, object value) { throw new NotImplementedException(); }
 
         // internals
         internal virtual bool CanRenameItem(object item)
@@ -69,7 +103,7 @@ namespace Microsoft.PowerShell.Commands
             return true;
         }
 
-        internal abstract object GetSessionStateItem(Path name);
+        internal abstract object GetSessionStateItem(string name);
         internal abstract IDictionary GetSessionStateTable();
         internal virtual object GetValueOfItem(object item)
         {
@@ -80,41 +114,45 @@ namespace Microsoft.PowerShell.Commands
             return item;
         }
         //TODO: remove these functions from all subclasses - they are never in use!
-        internal abstract void RemoveSessionStateItem(Path name);
-        internal abstract void SetSessionStateItem(Path name, object value, bool writeItem);
+        internal abstract void RemoveSessionStateItem(string name);
+        internal abstract void SetSessionStateItem(string name, object value, bool writeItem);
 
         #region IContentCmdletProvider Members
 
-        public void ClearContent(Path path)
+        public void ClearContent(string path)
+        {
+        }
+
+        public object ClearContentDynamicParameters(string path)
         {
             throw new NotImplementedException();
         }
 
-        public object ClearContentDynamicParameters(Path path)
+        public IContentReader GetContentReader(string path)
+        {
+            return new SessionStateContentReader(this, path);
+        }
+
+        public object GetContentReaderDynamicParameters(string path)
         {
             throw new NotImplementedException();
         }
 
-        public IContentReader GetContentReader(Path path)
+        public IContentWriter GetContentWriter(string path)
         {
-            throw new NotImplementedException();
+            return new SessionStateContentWriter(this, path);
         }
 
-        public object GetContentReaderDynamicParameters(Path path)
-        {
-            throw new NotImplementedException();
-        }
-
-        public IContentWriter GetContentWriter(Path path)
-        {
-            throw new NotImplementedException();
-        }
-
-        public object GetContentWriterDynamicParameters(Path path)
+        public object GetContentWriterDynamicParameters(string path)
         {
             throw new NotImplementedException();
         }
 
         #endregion
+
+        private string NormalizePath(string path)
+        {
+            return new Path(path).NormalizeSlashes().TrimEndSlash().ToString();
+        }
     }
 }

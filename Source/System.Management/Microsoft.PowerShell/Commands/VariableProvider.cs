@@ -23,13 +23,11 @@ namespace Microsoft.PowerShell.Commands
             return collection;
         }
 
-        internal override object GetSessionStateItem(Path name)
+        internal override object GetSessionStateItem(string name)
         {
-            // TODO: deal with empty path
-            if (string.Equals("variable:" + name.CorrectSlash, name, StringComparison.CurrentCultureIgnoreCase))
-                return true;
-
-            return SessionState.PSVariable.Get(name);
+            Path path = PathIntrinsics.RemoveDriveName(name);
+            path = path.TrimStartSlash();
+            return SessionState.PSVariable.Get(path);
         }
 
         internal override bool CanRenameItem(object item)
@@ -52,8 +50,11 @@ namespace Microsoft.PowerShell.Commands
             return (IDictionary)SessionState.PSVariable.GetAll();
         }
 
-        internal override void SetSessionStateItem(Path name, object value, bool writeItem)
+        internal override void SetSessionStateItem(string name, object value, bool writeItem)
         {
+            Path path = PathIntrinsics.RemoveDriveName(name);
+            name = path.TrimStartSlash();
+
             PSVariable variable = null;
             if (value != null)
             {
@@ -82,25 +83,26 @@ namespace Microsoft.PowerShell.Commands
             }
         }
 
-        internal override void RemoveSessionStateItem(Path name)
+        internal override void RemoveSessionStateItem(string name)
         {
             // TODO: can be Force'ed
             SessionState.PSVariable.Remove(name);
         }
 
-        protected override void GetItem(Path name)
+        protected override void GetItem(string name)
         {
-            // HACK: should it be this way?
+            name = PathIntrinsics.RemoveDriveName(new Path(name).TrimEndSlash());
+            GetChildItems(name, false);
+        }
 
-            if (string.Equals("variable:\\", name, StringComparison.CurrentCultureIgnoreCase))
+        internal override object GetValueOfItem(object item)
+        {
+            var variable = item as PSVariable;
+            if (variable != null)
             {
-                name = PathIntrinsics.RemoveDriveName(name);
-                GetChildItems(name, false);
+                return variable.Value;
             }
-            else
-            {
-                GetItem(PathIntrinsics.RemoveDriveName(name));
-            }
+            return base.GetValueOfItem(item);
         }
     }
 }

@@ -2,12 +2,13 @@
 using NUnit.Framework;
 using System;
 using System.Management.Automation;
+using System.Linq;
 using TestPSSnapIn;
 
 namespace ReferenceTests.Language
 {
     [TestFixture]
-    public class CmdletParameterTests : ReferenceTestBase
+    public class CmdletParameterTests : ReferenceTestBaseWithTestModule
     {
         [Test]
         public void NoMandatoriesWithoutArgsTest()
@@ -18,15 +19,21 @@ namespace ReferenceTests.Language
         }
 
         [Test]
+        public void ParameterIsNotMandatoryByDefault()
+        {
+            var cmd = CmdletName(typeof(TestParamIsNotMandatoryByDefaultCommand)); // should work without param
+            var res = ReferenceHost.RawExecute(cmd);
+            Assert.That(res.Count, Is.EqualTo(1));
+            Assert.That(res[0], Is.Null);
+        }
+
+        [Test]
         public void CmdletWithoutProvidedMandatoryThrows()
         {
             var cmd = CmdletName(typeof(TestWithMandatoryCommand));
-            var ex = Assert.Throws(typeof(ParameterBindingException),
-                                   delegate()
-                                   {
+            var ex = Assert.Throws<ParameterBindingException>(delegate {
                 ReferenceHost.Execute(cmd);
-            }
-            ) as ParameterBindingException;
+            });
             StringAssert.Contains("Missing", ex.ErrorRecord.FullyQualifiedErrorId);
         }
 
@@ -35,6 +42,32 @@ namespace ReferenceTests.Language
         public void ParameterSetSelectionByPipelineTest(string pipeInput, string expected)
         {
             var cmd = pipeInput + " | " + CmdletName(typeof(TestNoMandatoriesCommand)) + " -One '1' -Two '2'";
+            var res = ReferenceHost.Execute(cmd);
+            Assert.AreEqual(NewlineJoin(expected), res);
+        }
+
+        [Test]
+        public void ParameterSetSelectionWithOneMandatoryParameterByPipeline()
+        {
+            var cmd = "2 | " + CmdletName(typeof(TestOneMandatoryParamByPipelineSelectionCommand));
+            var res = ReferenceHost.Execute(cmd);
+            Assert.AreEqual(NewlineJoin("Integer", "Integer"), res);
+        }
+
+        [TestCase("1", new [] { "Message", "Integer" })]
+        [TestCase("'foo'", new [] { "Message", "Message" })]
+        public void ParameterSetSelectionWithMandatoryParameterByPipeline(string pipeInput, string[] expected)
+        {
+            var cmd = pipeInput + " | " + CmdletName(typeof(TestMandatoryParamByPipelineSelectionCommand));
+            var res = ReferenceHost.Execute(cmd);
+            Assert.AreEqual(NewlineJoin(expected), res);
+        }
+
+        [TestCase("1", new [] { "__AllParameterSets", "Integer" })]
+        [TestCase("'foo'", new [] { "__AllParameterSets", "Message" })]
+        public void ParameterSetSelectionWithMandatoryParameterByPipelineWithoutDefault(string pipeInput, string[] expected)
+        {
+            var cmd = pipeInput +" | " + CmdletName(typeof(TestMandatoryParamByPipelineSelectionWithoutDefaultCommand));
             var res = ReferenceHost.Execute(cmd);
             Assert.AreEqual(NewlineJoin(expected), res);
         }
@@ -84,6 +117,14 @@ namespace ReferenceTests.Language
         }
 
         [Test]
+        public void ArgumentsCanBeBoundExplicitlyWithSpace()
+        {
+            var cmd = CmdletName(typeof(TestWriteTwoMessagesCommand)) + " -Msg1: -Msg2 -Msg2: 'foo'";
+            var res = ReferenceHost.Execute(cmd);
+            Assert.AreEqual(NewlineJoin("1: -Msg2, 2: foo"), res);
+        }
+
+        [Test]
         public void TwoParameterSetsWithSameArgumentsAreNotAmbiguous()
         {
             var cmd = CmdletName(typeof(TestMandatoryInOneSetCommand)) + " 'works' 'foo'";
@@ -123,6 +164,20 @@ namespace ReferenceTests.Language
             var cmd = CmdletName(typeof(TestSwitchAndPositionalCommand)) + " -Switch 'test'";
             var res = ReferenceHost.Execute(cmd);
             Assert.AreEqual(NewlineJoin("test"), res);
+        }
+
+        [TestCase("-Switch:$true", true)]
+        [TestCase("-Switch:$false", false)]
+        [TestCase("-Switch:$null", true)]
+        [TestCase("-Switch:0.0", false)]
+        [TestCase("-Switch:0.01", true)]
+        [TestCase("", false)] // makes sure the property isn't null
+        public void SwitchParameterWithExplicitValue(string value, bool expected)
+        {
+            var cmd = CmdletName(typeof(TestSwitchParameterCommand)) + " " + value;
+            var res = ReferenceHost.RawExecute(cmd);
+            Assert.That(res.Count, Is.EqualTo(1));
+            Assert.That(res[0].BaseObject, Is.EqualTo(expected));
         }
 
         [Test]
@@ -232,7 +287,7 @@ namespace ReferenceTests.Language
         {
             var cmd = "new-object psobject -property @{f='abc'; b='def'} | "
                 + CmdletName(typeof(TestParametersByPipelinePropertyNamesCommand));
-            Assert.Throws<MethodInvocationException>(() => {
+            Assert.Throws<ExecutionWithErrorsException>(() => {
                 ReferenceHost.Execute(cmd);
             });
         }
@@ -275,12 +330,12 @@ namespace ReferenceTests.Language
             var cmd = "new-object psobject -property @{foo='abc'; bar='def'} | "
                 + CmdletName(typeof(TestParametersByPipelinePropertyNamesCommand))
                 + " -Foo 'a' -Bar 'a'";
-            Assert.Throws<MethodInvocationException>(() => {
+            Assert.Throws<ExecutionWithErrorsException>(() => {
                 ReferenceHost.Execute(cmd);
             });
         }
 
-        [Test, Explicit("To be honest: I don't understand why PS writes the last output AND still throws and excpetion")]
+        [Test]
         public void CmdletPipeParamByPropertyCanProcessMultipleButThrowsOnError()
         {
             var cmd = NewlineJoin(new string[] {
@@ -295,12 +350,19 @@ namespace ReferenceTests.Language
                 "ghi ",
                 "mno jkl"
             });
-            Assert.Throws<MethodInvocationException>(() =>
+            Assert.Throws<ExecutionWithErrorsException>(() =>
             {
                 ReferenceHost.Execute(cmd);
             });
             // stuff before and after third object should work
             Assert.AreEqual(expected, ReferenceHost.LastResults);
+        }
+
+        [Test]
+        public void ParameterSelectionMakesDefaultUneligible()
+        {
+            var cmd = CmdletName(typeof(TestParameterInTwoSetsButNotDefaultCommand)) + " -Custom 'foo'";
+            Assert.That(ReferenceHost.Execute(cmd), Is.EqualTo(NewlineJoin("Custom1")));
         }
 
         [Test]
@@ -315,6 +377,35 @@ namespace ReferenceTests.Language
             var expected = "hello" + Environment.NewLine;
             var result = ReferenceHost.Execute(cmd);
             Assert.AreEqual(expected, result);
+        }
+
+        [Test]
+        public void VerboseCommonParameterAvailableFromGetCommandCmdlet()
+        {
+            CmdletInfo info = ReferenceHost.RawExecute("Get-Command")
+                .Select(psObject => psObject.BaseObject as CmdletInfo)
+                .FirstOrDefault(cmdletInfo => (cmdletInfo != null) && (cmdletInfo.Name == "Get-Command"));
+            CommandParameterSetInfo parameterSetInfo = info.ParameterSets[0];
+            CommandParameterInfo verboseParameter = parameterSetInfo.Parameters.FirstOrDefault(parameter => parameter.Name == "Verbose");
+
+            Assert.IsNotNull(verboseParameter);
+            Assert.IsTrue(verboseParameter.Aliases.Contains("vb"));
+        }
+
+        [Test]
+        [TestCase("'B' -First 'A' -Third 'C' -Fourth 'D'")]
+        [TestCase("'B' 'C' -First 'A' -Fourth 'D'")]
+        [TestCase("'B' 'C' 'D' -First 'A'")]
+        [TestCase("'A' 'C' 'D' -Second 'B'")]
+        [TestCase("'A' 'D' -Second 'B' -Third 'C'")]
+        public void CmdletParameterBoundInPositionTwoWhenFirstPositionalParameterBoundByName(string parameters)
+        {
+            string cmdletName = CmdletName(typeof(TestParametersByPositionWhenOneBoundByName));
+            string cmd = cmdletName + " " + parameters;
+
+            string result = ReferenceHost.Execute(cmd);
+
+            Assert.AreEqual("'A', 'B', 'C', 'D'" + Environment.NewLine, result);
         }
     }
 }

@@ -1,4 +1,8 @@
-[Pash](https://github.com/Pash-Project/Pash/) [![Linux Build Status (Travis-CI)](https://secure.travis-ci.org/Pash-Project/Pash.png?branch=master )](http://travis-ci.org/Pash-Project/Pash) [![Windows Build Status (AppVeyor)](https://ci.appveyor.com/api/projects/status/w6027t7hoqblsvow/branch/master)](https://ci.appveyor.com/project/JayBazuzi/pash/branch/master)
+[![Linux Build Status (Travis-CI)](https://secure.travis-ci.org/Pash-Project/Pash.png?branch=master )](http://travis-ci.org/Pash-Project/Pash)
+[![Windows Build Status (AppVeyor)](https://ci.appveyor.com/api/projects/status/w6027t7hoqblsvow/branch/master)](https://ci.appveyor.com/project/JayBazuzi/pash/branch/master)
+[![Pull Request Stats](http://issuestats.com/github/Pash-Project/Pash/badge/pr)](http://issuestats.com/github/Pash-Project/Pash)
+
+[Pash](https://github.com/Pash-Project/Pash/)
 ====
 
 An Open Source reimplementation of Windows PowerShell.  
@@ -24,7 +28,7 @@ Assuming you have MonoDevelop installed:
 3. `xbuild`
 4. `mono Source/PashConsole/bin/Debug/Pash.exe`
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for more details.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for more details, especially if you see funny characters on startup.
 
 License
 -------

@@ -23,6 +23,27 @@ namespace ReferenceTests
 
         public string AssemblyDirectory { get; set; }
 
+        private string _binaryTestModule;
+        public string BinaryTestModule
+        {
+            get
+            {
+                if (_binaryTestModule == null)
+                {
+                    _binaryTestModule = new Uri(typeof(TestCommand).Assembly.CodeBase).LocalPath;
+                }
+                return _binaryTestModule;
+            }
+        }
+
+        public string BinaryTestModuleName
+        {
+            get
+            {
+                return Path.GetFileNameWithoutExtension(BinaryTestModule);
+            }
+        }
+
         public ReferenceTestBase()
         {
             _createdFiles = new List<string>();
@@ -38,14 +59,12 @@ namespace ReferenceTests
         [SetUp]
         public virtual void SetUp()
         {
-            ImportTestCmdlets();
             _startDir = Environment.CurrentDirectory;
         }
 
         [TearDown]
         public virtual void TearDown()
         {
-            CleanImports();
             RemoveCreatedFiles();
             if (!String.IsNullOrEmpty(_startDir) && !_startDir.Equals(Environment.CurrentDirectory))
             {
@@ -127,7 +146,7 @@ namespace ReferenceTests
         public string CreateFile(string script, string extension)
         {
             var tempDir = Path.GetTempPath();
-            var fileName = String.Format("TempFile{0}.{1}", _createdFiles.Count, extension);
+            var fileName = String.Format("TempFile{0}.{1}", _createdFiles.Count, extension.TrimStart('.'));
             var filePath = Path.Combine(tempDir, fileName);
             File.WriteAllText(filePath, script);
             _createdFiles.Add(filePath);
@@ -183,7 +202,15 @@ namespace ReferenceTests
         public static void ExecuteAndCompareTypedResult(string cmd, params object[] expectedValues)
         {
             var results = ReferenceHost.RawExecute(cmd);
-            Assert.AreEqual(expectedValues.Length, results.Count);
+            if (expectedValues == null)
+            {
+                Assert.That(results.Count, Is.EqualTo(1));
+                Assert.That(results[0], Is.Null);
+                return;
+            }
+            Assert.AreEqual(expectedValues.Length, results.Count,
+                            "Expected: " + SafeStringJoin(", ", expectedValues) + Environment.NewLine +
+                            "Was:      " + SafeStringJoin(", ", results));
             for (int i = 0; i < expectedValues.Length; i++)
             {
                 var expected = expectedValues[i];
@@ -192,6 +219,7 @@ namespace ReferenceTests
                     Assert.IsNull(results[i]);
                     continue;
                 }
+                Assert.NotNull(results[i], i + "th result is null, but should be " + expectedValues[i].ToString());
                 var res = results[i].BaseObject;
                 var restype = res.GetType();
                 Assert.AreSame(expected.GetType(), restype);
@@ -252,6 +280,12 @@ namespace ReferenceTests
             sb.Remove(sb.Length - 1, 1);
             sb.Append(")");
             return sb.ToString();
+        }
+
+        static string SafeStringJoin(string sep, IEnumerable<object> objs)
+        {
+            var strs = from o in objs select o == null ? "" : o.ToString();
+            return String.Join(sep, strs);
         }
     }
 }

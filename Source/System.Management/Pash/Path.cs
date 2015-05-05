@@ -2,6 +2,7 @@
 using System;
 using System.Management.Automation;
 using Pash.Implementation;
+using Microsoft.PowerShell.Commands;
 
 namespace System.Management
 {
@@ -9,28 +10,28 @@ namespace System.Management
     /// <summary>
     /// Imutable class that acts like a string, but provides many options around manipulating a powershell 'path'.
     /// </summary>
-    public class Path
+    internal class Path
     {
         private readonly string _rawPath;
-        static readonly string _predeterminedCorrectSlash;
-        static readonly string _predeterminedWrongSlash;
+        public static readonly string PredeterminedCorrectSlash;
+        public static readonly string PredeterminedWrongSlash;
 
         static Path()
         {
             if (System.IO.Path.DirectorySeparatorChar.Equals('/'))
             {
-                _predeterminedCorrectSlash = "/";
-                _predeterminedWrongSlash = "\\";
+                PredeterminedCorrectSlash = "/";
+                PredeterminedWrongSlash = "\\";
             }
             else
             {
-                _predeterminedCorrectSlash = "\\";
-                _predeterminedWrongSlash = "/";
+                PredeterminedCorrectSlash = "\\";
+                PredeterminedWrongSlash = "/";
             }
         }
 
         public Path(string rawPath)
-            : this(_predeterminedCorrectSlash, _predeterminedWrongSlash, rawPath)
+            : this(PredeterminedCorrectSlash, PredeterminedWrongSlash, rawPath)
         {
         }
 
@@ -133,12 +134,12 @@ namespace System.Management
         public Path GetParentPath(Path root)
         {
             var path = this;
-
-            path = path.NormalizeSlashes();
-            path = path.TrimEndSlash();
+            // normalize first
+            path = path.NormalizeSlashes().TrimEndSlash();
 
             if (root != null)
             {
+                root = root.NormalizeSlashes().TrimEndSlash();
                 if (string.Equals(path, root, StringComparison.CurrentCultureIgnoreCase))
                 {
                     return new Path(CorrectSlash, WrongSlash, string.Empty);
@@ -185,7 +186,7 @@ namespace System.Management
 
             if (string.IsNullOrEmpty(parent) && string.IsNullOrEmpty(child))
             {
-                return child;
+                return CorrectSlash; // root
             }
 
             if (string.IsNullOrEmpty(parent) && !string.IsNullOrEmpty(child))
@@ -312,7 +313,7 @@ namespace System.Management
             if (this.StartsWithSlash())
             {
                 // return unix drive
-                return CorrectSlash;
+                return FileSystemProvider.FallbackDriveName;
             }
 
             int iDelimiter = _rawPath.IndexOf(':');
@@ -342,6 +343,27 @@ namespace System.Management
                 return false;
             }
             return true;
+        }
+
+        public string GetDirectory()
+        {
+            var lastSlash = LastIndexOf(CorrectSlash);
+            return new Path(_rawPath.Substring(0, lastSlash)); // path without last slash and stuff behind
+        }
+
+        public bool HasExtension()
+        {
+            return System.IO.Path.HasExtension(_rawPath);
+        }
+
+        public string GetExtension()
+        {
+            return System.IO.Path.GetExtension(_rawPath);
+        }
+
+        public string GetFileNameWithoutExtension()
+        {
+            return System.IO.Path.GetFileNameWithoutExtension(_rawPath);
         }
 
         public Path RemoveDrive()
@@ -418,7 +440,7 @@ namespace System.Management
         public int Length { get { return _rawPath.Length; } }
     }
 
-    public static partial class _
+    internal static partial class _
     {
         public static Path AsPath(this string value)
         {

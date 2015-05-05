@@ -11,7 +11,7 @@
     <AssemblyName>ReferenceTests</AssemblyName>
     <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
-    <ProductVersion>10.0.0</ProductVersion>
+    <ProductVersion>8.0.30703</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
@@ -34,6 +34,7 @@
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.ServiceProcess" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -44,16 +45,41 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Commands\AddContentTests.cs" />
     <Compile Include="Commands\AddMemberTests.cs" />
     <Compile Include="Commands\AddTypeTests.cs" />
+    <Compile Include="Commands\ClearContentTests.cs" />
+    <Compile Include="Commands\GetCommandTests.cs" />
+    <Compile Include="Commands\GetContentTests.cs" />
+    <Compile Include="Commands\ImportModuleTests.cs" />
+    <Compile Include="Commands\RemoveModuleTests.cs" />
+    <Compile Include="Commands\SelectStringTests.cs" />
+    <Compile Include="Commands\SetContentTests.cs" />
+    <Compile Include="Commands\SplitPathTests.cs" />
+    <Compile Include="Commands\WhereObjectTests.cs" />
     <Compile Include="Integration\RosettaCode.cs" />
+    <Compile Include="Language\FileRedirectionTests.cs" />
+    <Compile Include="Language\HereStringTests.cs" />
     <Compile Include="Language\ObjectMemberTests.cs" />
+    <Compile Include="Language\Operators\FormatOperatorTests_7_5.cs" />
     <Compile Include="Language\Operators\BitwiseTests.cs" />
     <Compile Include="Language\CmdletParameterTests.cs" />
     <Compile Include="API\DefaultScriptScopeTests.cs" />
     <Compile Include="Language\FunctionTests.cs" />
     <Compile Include="Language\InvocationTests.cs" />
+    <Compile Include="Language\Operators\LogicalOperators_7_10.cs" />
+    <Compile Include="Language\Operators\RangeOperatorTests_7_4.cs" />
+    <Compile Include="Language\ScopeTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Providers\AliasProviderTests.cs" />
+    <Compile Include="Providers\ContentCmdletProviderTests.cs" />
+    <Compile Include="Providers\ContentReaderTests.cs" />
+    <Compile Include="Providers\ContentWriterTests.cs" />
+    <Compile Include="Providers\FunctionProviderTests.cs" />
+    <Compile Include="Providers\ItemCmdletProviderTests.cs" />
+    <Compile Include="Providers\ContainerCmdletProviderTests.cs" />
+    <Compile Include="Providers\EnvironmentProviderTests.cs" />
+    <Compile Include="Providers\VariableProviderTests.cs" />
     <Compile Include="ReferenceHost.cs" />
     <Compile Include="Language\PipelineExecutionTests.cs" />
     <Compile Include="ReferenceTestBase.cs" />
@@ -75,19 +101,37 @@
     <Compile Include="Language\Operators\MultiplicativeOperatorTests_7_6.cs" />
     <Compile Include="Language\IndexTests.cs" />
     <Compile Include="Language\HashtableTests_10.cs" />
-    <Compile Include="Language\Operators\ConversionTests.cs" />
     <Compile Include="Integration\CodeGolf.cs" />
     <Compile Include="Language\DefaultInitialSessionStateTests.cs" />
     <Compile Include="Language\Operators\ArithmeticAssignmentTests.cs" />
+    <Compile Include="Language\Operators\UnaryOperatorTests_7_2.cs" />
+    <Compile Include="Language\Operators\GeneralConversionTests.cs" />
+    <Compile Include="Language\Operators\Conversion_Tests_6.cs" />
+    <Compile Include="Language\ErrorTests.cs" />
+    <Compile Include="Parsing\CommandParsingTests.cs" />
+    <Compile Include="API\LanguagePrimitivesTests.cs" />
+    <Compile Include="Language\VariableTests.cs" />
+    <Compile Include="Language\Loops.cs" />
+    <Compile Include="Language\Operators\PrefixIncrementDecrementTests_7_2_6.cs" />
+    <Compile Include="Language\Operators\PostfixIncrementDecrementTests_7_1_5.cs" />
+    <Compile Include="Commands\ExportModuleMemberTests.cs" />
+    <Compile Include="ReferenceTestBaseWithTestModule.cs" />
+    <Compile Include="Commands\ModuleCommandTestBase.cs" />
+    <Compile Include="Commands\GetModuleTests.cs" />
+    <Compile Include="GithubIssues\Issue200.cs" />
+    <Compile Include="GithubIssues\Issue20.cs" />
+    <Compile Include="Language\IfElseTests.cs" />
+    <Compile Include="Providers\ProviderLoadingTests.cs" />
+    <Compile Include="Providers\DriveCmdletProviderTests.cs" />
+    <Compile Include="Providers\NavigationCmdletProviderTests.cs" />
+    <Compile Include="TestUtil.cs" />
+    <Compile Include="Commands\ConvertToSecureStringTests.cs" />
+    <Compile Include="Language\ExpressionTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\System.Management\System.Management.csproj">
       <Project>{C5E303EC-5684-4C95-B0EC-2593E6662403}</Project>
       <Name>System.Management</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\TestHost\TestHost.csproj">
-      <Project>{A5550FB3-553B-441E-8386-AD1EF5C31FAE}</Project>
-      <Name>TestHost</Name>
     </ProjectReference>
     <ProjectReference Include="..\TestPSSnapIn\TestPSSnapIn.csproj">
       <Project>{DC9303A4-3F38-4591-9BD4-67F223F7D204}</Project>
@@ -105,6 +149,10 @@
       <Project>{BB348EAD-1713-4760-9953-BC721A203885}</Project>
       <Name>PashConsole</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.csproj">
+      <Project>{DF4B0778-BBB9-4A69-AADE-FD4361675644}</Project>
+      <Name>Microsoft.PowerShell.Security</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
@@ -114,4 +162,5 @@
   <Target Name="AfterBuild">
   </Target>
   -->
+  <ItemGroup />
 </Project>

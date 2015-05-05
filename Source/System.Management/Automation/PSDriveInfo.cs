@@ -9,14 +9,14 @@ namespace System.Management.Automation
 {
     public class PSDriveInfo : IComparable, IScopedItem
     {
-        // TODO: drive can be hidden
         public string Name { get; private set; }
         public ProviderInfo Provider { get; private set; }
         public string Root { get; internal set; }
         public string Description { get; set; }
         public PSCredential Credential { get; private set; }
-        public Path CurrentLocation { get; set; }
+        public string CurrentLocation { get; set; }
         internal bool RemovableDrive { get; set; }
+        internal bool Hidden { get; set; }
 
         protected PSDriveInfo(PSDriveInfo driveInfo)
         {

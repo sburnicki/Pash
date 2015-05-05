@@ -4,12 +4,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using NUnit.Framework;
-using Irony.Parsing;
 using Pash.ParserIntrinsics;
 using System.Collections;
 using System.Management.Automation;
 using System.Management.Automation.Language;
 using System.IO;
+using Pash.Implementation;
 
 namespace ParserTests
 {
@@ -410,7 +410,7 @@ ls
                 Assert.IsNull(variablePath.DriveName);
             }
 
-            [Test, Explicit]
+            [Test]
             public void QuestionMark()
             {
                 VariablePath variablePath = ParseInput("$?").
@@ -593,7 +593,7 @@ ls
             Assert.AreEqual(2, indexExpressionAst.Index.Value);
         }
 
-        [Test, ExpectedException(typeof(PowerShellGrammar.ParseException))
+        [Test, ExpectedException(typeof(ParseException))
         ]
         public void IndexWithSpaceShouldFail()
         {
@@ -603,7 +603,7 @@ ls
         [Test]
         public void ParseError()
         {
-            Assert.Throws<PowerShellGrammar.ParseException>(() =>
+            Assert.Throws<ParseException>(() =>
             {
 
                 ParseInput("$");
@@ -754,6 +754,46 @@ ls
         }
 
         [Test]
+        public void EmptyStatementList()
+        {
+            var statements = ParseInput("")
+                .EndBlock
+                .Statements;
+
+            Assert.AreEqual(0, statements.Count);
+        }
+
+        [Test]
+        public void SimpleStatement()
+        {
+            var statements = ParseInput(" Get-Location ")
+                .EndBlock
+                .Statements;
+
+            Assert.AreEqual(1, statements.Count);
+        }
+
+        [Test]
+        public void LastStatementGetsTerminatedInAddition()
+        {
+            var statements = ParseInput(" Get-Location;; ")
+                .EndBlock
+                .Statements;
+
+            Assert.AreEqual(1, statements.Count);
+        }
+
+        [Test]
+        public void StatementListCanStartWithTerminators()
+        {
+            var statements = ParseInput(" ;  ; Get-Location")
+                .EndBlock
+                .Statements;
+
+            Assert.AreEqual(1, statements.Count);
+        }
+
+        [Test]
         public void StatementSequenceWithSemicolon()
         {
             var statements = ParseInput("Set-Location ; Get-Location")
@@ -763,19 +803,11 @@ ls
             Assert.AreEqual(2, statements.Count);
         }
 
-        [Test(Description = "Issue: https://github.com/Pash-Project/Pash/issues/7")]
+        [Test]
         public void StatementSequenceWithoutSemicolonTest()
         {
-            Assert.Throws<PowerShellGrammar.ParseException>(() =>
-            {
-
-                var statements = ParseInput("if ($true) { } Get-Location")
-                    .EndBlock
-                        .Statements;
-
-                Assert.AreEqual(2, statements.Count);
-
-            });
+            var statements = ParseInput("if ($true) { } Get-Location").EndBlock.Statements;
+            Assert.AreEqual(2, statements.Count);
         }
 
         [Test]
@@ -1181,7 +1213,8 @@ ls
 
         static dynamic ParseInput(string s)
         {
-            return PowerShellGrammar.ParseInteractiveInput(s);
+            Parser.IronyParser.Context.TracingEnabled = true;
+            return Parser.ParseInput(s);
         }
 
         static dynamic ParseStatement(string input)
@@ -1227,7 +1260,7 @@ ls
             [Test]
             public void BadMemberAccess()
             {
-                Assert.Throws<PowerShellGrammar.ParseException>(() =>
+                Assert.Throws<ParseException>(() =>
                 {
 
                     // The language spec says this space is prohibited.
@@ -1485,7 +1518,9 @@ ls
         [Test]
         public void ParamBlockWithOneParameterTest()
         {
-            ParamBlockAst result = ParseInput("param($path)")
+            // NOTE: the implementation cannot parse a param block with directly an EOD behind it. We need a ';' or
+            // a newline, which is also used in any practical situation (EOD after param block doesn't make sense)
+            ParamBlockAst result = ParseInput("param($path)\n")
                 .ParamBlock;
 
             ParameterAst parameter = result.Parameters.FirstOrDefault();
@@ -1496,7 +1531,9 @@ ls
         [Test]
         public void ParamBlockWithTwoParametersTest()
         {
-            ParamBlockAst result = ParseInput("param($first, $second)")
+            // NOTE: the implementation cannot parse a param block with directly an EOD behind it. We need a ';' or
+            // a newline, which is also used in any practical situation (EOD after param block doesn't make sense)
+            ParamBlockAst result = ParseInput("param($first, $second)\n")
                 .ParamBlock;
 
             ParameterAst firstParameter = result.Parameters.FirstOrDefault();
@@ -1509,7 +1546,9 @@ ls
         [Test]
         public void ParamBlockWithOneParameterWithDefaultIntegerValueTest()
         {
-            ParamBlockAst result = ParseInput("param($first = 2)")
+            // NOTE: the implementation cannot parse a param block with directly an EOD behind it. We need a ';' or
+            // a newline, which is also used in any practical situation (EOD after param block doesn't make sense)
+            ParamBlockAst result = ParseInput("param($first = 2)\n")
                 .ParamBlock;
 
             ParameterAst parameter = result.Parameters.FirstOrDefault();
@@ -2104,6 +2143,93 @@ ls
                 Assert.AreEqual(TokenKind.Plus, binaryExpressionAst.Operator);
                 Assert.AreEqual(leftExpressionAst.Value, 1);
                 Assert.AreEqual(rightExpressionAst.Value, 2);
+            }
+        }
+
+        [TestFixture]
+        public class FileRedirectionTests
+        {
+            dynamic Parse(string input)
+            {
+                return ParseStatement(input)
+                    .PipelineElements[0];
+            }
+
+            [Test]
+            public void OutputStreamToFile()
+            {
+                CommandAst commandAst = Parse("Get-Process > out.txt");
+                var firstCommandElementAst = commandAst.CommandElements.FirstOrDefault() as StringConstantExpressionAst;
+                var redirectAst = commandAst.Redirections.FirstOrDefault() as FileRedirectionAst;
+                var redirectFileNameAst = redirectAst.Location as StringConstantExpressionAst;
+
+                Assert.AreEqual(1, commandAst.CommandElements.Count);
+                Assert.IsNotNull(firstCommandElementAst);
+                Assert.AreEqual("Get-Process", firstCommandElementAst.Value);
+                Assert.AreEqual(1, commandAst.Redirections.Count);
+                Assert.IsFalse(redirectAst.Append);
+                Assert.AreEqual(RedirectionStream.Output, redirectAst.FromStream);
+                Assert.IsNotNull(redirectFileNameAst);
+                Assert.AreEqual("out.txt", redirectFileNameAst.Value);
+            }
+
+            [Test]
+            public void OutputStreamAppendedToFile()
+            {
+                CommandAst commandAst = Parse("Get-Process >> out.txt");
+                var firstCommandElementAst = commandAst.CommandElements.FirstOrDefault() as StringConstantExpressionAst;
+                var redirectAst = commandAst.Redirections.FirstOrDefault() as FileRedirectionAst;
+                var redirectFileNameAst = redirectAst.Location as StringConstantExpressionAst;
+
+                Assert.IsTrue(redirectAst.Append);
+                Assert.AreEqual(RedirectionStream.Output, redirectAst.FromStream);
+                Assert.AreEqual("out.txt", redirectFileNameAst.Value);
+            }
+
+            [Test]
+            public void CommandExpressionOutputToFile()
+            {
+                CommandExpressionAst commandExpressionAst = Parse("$i > out.txt");
+                var variableExpressionAst = commandExpressionAst.Expression as VariableExpressionAst;
+                var redirectAst = commandExpressionAst.Redirections.FirstOrDefault() as FileRedirectionAst;
+                var redirectFileNameAst = redirectAst.Location as StringConstantExpressionAst;
+
+                Assert.AreEqual("i", variableExpressionAst.VariablePath.ToString());
+                Assert.AreEqual(1, commandExpressionAst.Redirections.Count);
+                Assert.IsFalse(redirectAst.Append);
+                Assert.AreEqual(RedirectionStream.Output, redirectAst.FromStream);
+                Assert.AreEqual("out.txt", redirectFileNameAst.Value);
+            }
+
+            [Test]
+            public void OutputErrorStreamToFile()
+            {
+                CommandAst commandAst = Parse("Get-Process 2> out.txt");
+                var firstCommandElementAst = commandAst.CommandElements.FirstOrDefault() as StringConstantExpressionAst;
+                var redirectAst = commandAst.Redirections.FirstOrDefault() as FileRedirectionAst;
+                var redirectFileNameAst = redirectAst.Location as StringConstantExpressionAst;
+
+                Assert.AreEqual(1, commandAst.CommandElements.Count);
+                Assert.IsNotNull(firstCommandElementAst);
+                Assert.AreEqual("Get-Process", firstCommandElementAst.Value);
+                Assert.AreEqual(1, commandAst.Redirections.Count);
+                Assert.IsFalse(redirectAst.Append);
+                Assert.AreEqual(RedirectionStream.Error, redirectAst.FromStream);
+                Assert.IsNotNull(redirectFileNameAst);
+                Assert.AreEqual("out.txt", redirectFileNameAst.Value);
+            }
+
+            [Test]
+            public void ErrorStreamAppendedToFile()
+            {
+                CommandAst commandAst = Parse("Get-Process 2>> out.txt");
+                var firstCommandElementAst = commandAst.CommandElements.FirstOrDefault() as StringConstantExpressionAst;
+                var redirectAst = commandAst.Redirections.FirstOrDefault() as FileRedirectionAst;
+                var redirectFileNameAst = redirectAst.Location as StringConstantExpressionAst;
+
+                Assert.IsTrue(redirectAst.Append);
+                Assert.AreEqual(RedirectionStream.Error, redirectAst.FromStream);
+                Assert.AreEqual("out.txt", redirectFileNameAst.Value);
             }
         }
     }

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Reflection;
 using System.Text;
+using Pash;
 using Pash.Implementation;
 
 namespace System.Management.Automation
@@ -12,7 +13,7 @@ namespace System.Management.Automation
     /// <summary>
     /// Represents and contains information about a cmdlet.
     /// </summary>
-    public class CmdletInfo : CommandInfo
+    public class CmdletInfo : CommandInfo, IScopedItem
     {
         public string HelpFile { get; private set; }
         public Type ImplementingType { get; private set; }
@@ -21,12 +22,32 @@ namespace System.Management.Automation
         public string Verb { get; private set; }
         public ReadOnlyCollection<CommandParameterSetInfo> ParameterSets { get; private set; }
 
-        internal Dictionary<string, string> UniqueSetParameters { get; private set; }
+        public override ReadOnlyCollection<PSTypeName> OutputType {
+            get { return outputType; }
+        }
+
         internal Dictionary<string, CommandParameterInfo> ParameterInfoLookupTable { get; private set; }
 
         private Exception _validationException;
+        private ReadOnlyCollection<PSTypeName> outputType;
 
-        internal CmdletInfo(string name, Type implementingType, string helpFile, PSSnapInInfo PSSnapin, ExecutionContext context)
+        internal CmdletInfo(string name, Type implementingType, string helpFile)
+            : this(name, implementingType, helpFile, null, null)
+        {
+        }
+
+        internal CmdletInfo(string name, Type implementingType, string helpFile, PSSnapInInfo snapin)
+            : this(name, implementingType, helpFile, snapin, null)
+        {
+        }
+
+        internal CmdletInfo(string name, Type implementingType, string helpFile, PSModuleInfo module)
+            : this(name, implementingType, helpFile, null, module)
+        {
+
+        }
+
+        internal CmdletInfo(string name, Type implementingType, string helpFile, PSSnapInInfo snapin, PSModuleInfo module)
             : base(name, CommandTypes.Cmdlet)
         {
             int i = name.IndexOf('-');
@@ -34,15 +55,16 @@ namespace System.Management.Automation
             {
                 throw new Exception("InvalidCmdletNameFormat " + name);
             }
-            UniqueSetParameters = new Dictionary<string, string>();
             ParameterInfoLookupTable = new Dictionary<string, CommandParameterInfo>(StringComparer.CurrentCultureIgnoreCase);
             Verb = name.Substring(0, i);
             Noun = name.Substring(i + 1);
             ImplementingType = implementingType;
             HelpFile = helpFile;
-            PSSnapIn = PSSnapin;
             _validationException = null;
+            PSSnapIn = snapin;
+            Module = module;
             GetParameterSetInfo(implementingType);
+            GetOutputTypes(implementingType);
         }
 
         public override string Definition
@@ -124,20 +146,6 @@ namespace System.Management.Automation
             CommandParameterInfo pi = new CommandParameterInfo(memberInfo, type, paramAttr);
             var paramSetName = paramAttr.ParameterSetName;
             // Determine if this parameter is uniquely defined for one set and rember it
-            if (!String.IsNullOrEmpty(paramSetName) && !paramSetName.Equals(ParameterAttribute.AllParameterSets))
-            {
-                var parameterName = pi.Name;
-                // check if we already defined that parameter for another set
-                if (UniqueSetParameters.ContainsKey(parameterName))
-                {
-                    UniqueSetParameters[parameterName] = null;
-                }
-                else
-                {
-                    // not yet in any set, it's a candidate for a unique parameter
-                    UniqueSetParameters[parameterName] = paramSetName;
-                }
-            }
 
             paramSetName = paramSetName ?? ParameterAttribute.AllParameterSets;
 
@@ -260,12 +268,6 @@ namespace System.Management.Automation
                 }
             }
 
-            // Clean the UniqueSetParameters
-            foreach (var cur in UniqueSetParameters.Where(keyValue => (keyValue.Value == null)).ToList())
-            {
-                UniqueSetParameters.Remove(cur.Key);
-            }
-
             // Create param-sets collection
             Collection<CommandParameterSetInfo> paramSetInfo = new Collection<CommandParameterSetInfo>();
 
@@ -316,5 +318,39 @@ namespace System.Management.Automation
         {
             return new ReadOnlyCollection<CommandParameterSetInfo>(ParameterSets.Where(x => !x.IsDefault).ToList());
         }
+
+        internal void AddCommonParameters()
+        {
+            ParameterSets = CommonCmdletParameters.AddCommonParameters(ParameterSets);
+            foreach (CommandParameterInfo parameterInfo in CommonCmdletParameters.CommonParameterSetInfo.Parameters)
+            {
+                RegisterParameter(parameterInfo);
+            }
+        }
+
+        private void GetOutputTypes(Type cmdletType)
+        {
+            var types = new List<PSTypeName>();
+            foreach (OutputTypeAttribute attribute in cmdletType.GetCustomAttributes(typeof(OutputTypeAttribute), false))
+            {
+                types.AddRange(attribute.Type);
+            }
+            outputType = new ReadOnlyCollection<PSTypeName>(types);
+        }
+
+        #region IScopedItem Members
+
+        public string ItemName
+        {
+            get { return Name; }
+        }
+
+        public ScopedItemOptions ItemOptions
+        {
+            get { return ScopedItemOptions.None; }
+            set { throw new NotImplementedException("Setting scope options for cmdlets is not supported"); }
+        }
+        #endregion
+
     }
 }

@@ -6,6 +6,7 @@ namespace System.Management.Automation
 {
     public class ProviderInfo : IComparable
     {
+        internal PSDriveInfo CurrentDrive { get; set; }
         public PSSnapInInfo PSSnapIn { get; private set; }
         public string Name { get; private set; }
         public string Description { get; set; }
@@ -14,13 +15,30 @@ namespace System.Management.Automation
         public ProviderCapabilities Capabilities { get; private set; }
         public string HelpFile { get; private set; }
         private SessionState _sessionState;
+        public PSModuleInfo Module { get; private set; }
+        public string ModuleName
+        {
+            get
+            {
+                return Module == null ? null : Module.Name;
+            }
+        }
+        internal PSDriveInfo DummyDrive
+        {
+            get
+            {
+                var drive = new PSDriveInfo("", this, "", "", null);
+                drive.Hidden = true;
+                return drive;
+            }
+        }
 
         public Collection<PSDriveInfo> Drives
         {
             get
             {
                 //TODO: only get the ones of the global scope to match PS 2.0 behavior
-                return _sessionState.Drive.GetAllForProvider(FullName);
+                return _sessionState.Drive.GetAllForProvider(Name);
             }
         }
 
@@ -29,9 +47,19 @@ namespace System.Management.Automation
         {
         }
 
-        internal ProviderInfo(SessionState sessionState, Type implementingType, string name, string description, string home, string helpFile, PSSnapInInfo psSnapIn)
+        internal ProviderInfo(SessionState sessionState, Type implementingType, string name, string description,
+                              string home, string helpFile, PSSnapInInfo psSnapIn)
+            : this(sessionState, implementingType, name, description, home, helpFile, psSnapIn, null)
+        {
+        }
+
+        // for all fields
+        internal ProviderInfo(SessionState sessionState, Type implementingType, string name, string description, string home,
+                              string helpFile, PSSnapInInfo psSnapIn, PSModuleInfo module)
+
         {
             _sessionState = sessionState;
+            Module = module;
             PSSnapIn = psSnapIn;
             Name = name;
             Description = description;
@@ -51,6 +79,7 @@ namespace System.Management.Automation
             ImplementingType = providerInfo.ImplementingType;
             Capabilities = providerInfo.Capabilities;
             HelpFile = providerInfo.HelpFile;
+            Module = providerInfo.Module;
         }
 
         public override string ToString()
@@ -74,9 +103,10 @@ namespace System.Management.Automation
         {
             get
             {
-                if (!string.IsNullOrEmpty(PSSnapInName))
+                var moudleOrSnapinName = string.IsNullOrEmpty(PSSnapInName) ? ModuleName : PSSnapInName;
+                if (!string.IsNullOrEmpty(moudleOrSnapinName))
                 {
-                    return string.Format(@"{0}\{1}", PSSnapInName, Name);
+                    return string.Format(@"{0}\{1}", moudleOrSnapinName, Name);
                 }
                 return Name;
             }
@@ -131,12 +161,27 @@ namespace System.Management.Automation
         // internals
         internal bool IsNameMatch(string providerName)
         {
-            return string.Equals(FullName, providerName, StringComparison.CurrentCultureIgnoreCase);
+            if (string.Equals(FullName, providerName, StringComparison.CurrentCultureIgnoreCase))
+            {
+                return true;
+            }
+            return string.Equals(Name, providerName, StringComparison.CurrentCultureIgnoreCase);
+        }
+
+        public bool IsAnyNameMatch(string[] providerNames)
+        {
+            foreach (var name in providerNames)
+            {
+                if (IsNameMatch(name))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         public override bool Equals(object obj)
         {
-
             return CompareTo(obj) == 0;
         }
 
@@ -152,9 +197,9 @@ namespace System.Management.Automation
         {
             if (!IsNameMatch(provider.FullName))
             {
-                return provider.FullName.CompareTo(provider.FullName); //cannot be 0, otherwise it was a name match
+                return FullName.CompareTo(provider.FullName); //cannot be 0, otherwise it was a name match
             }
-            return PSSnapIn.CompareTo(provider.PSSnapIn);
+            return 0;
         }
 
         public int CompareTo(object obj)

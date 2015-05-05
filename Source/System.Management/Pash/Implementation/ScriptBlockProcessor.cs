@@ -22,7 +22,7 @@ namespace Pash.Implementation
         private bool _fromFile;
         private int? _exitCode;
         private ExecutionVisitor _scopedExecutionVisitor;
-
+        ScriptBlockParameterBinder _argumentBinder;
 
         public ScriptBlockProcessor(IScriptBlockInfo scriptBlockInfo, CommandInfo commandInfo)
             : base(commandInfo)
@@ -31,42 +31,12 @@ namespace Pash.Implementation
             _fromFile = commandInfo.CommandType.Equals(CommandTypes.ExternalScript);
         }
 
-        private void BindArguments()
-        {
-            ReadOnlyCollection<ParameterAst> scriptParameters = _scriptBlockInfo.GetParameters();
-
-            for (int i = 0; i < scriptParameters.Count; ++i)
-            {
-                ParameterAst scriptParameter = scriptParameters[i];
-                CommandParameter parameter = GetParameterByPosition(i);
-                object parameterValue = GetParameterValue(scriptParameter, parameter);
-
-                ExecutionContext.SetVariable(scriptParameter.Name.VariablePath.UserPath, parameterValue);
-            }
-        }
-
-        private object GetParameterValue(ParameterAst scriptParameter, CommandParameter parameter)
-        {
-            if (parameter != null)
-            {
-                return parameter.Value;
-            }
-            return _scopedExecutionVisitor.EvaluateAst(scriptParameter.DefaultValue);;
-        }
-
-        private CommandParameter GetParameterByPosition(int position)
-        {
-            if (Parameters.Count > position)
-            {
-                return Parameters[position];
-            }
-            return null;
-        }
-
         private void CreateOwnScope()
         {
             _originalContext = ExecutionContext;
-            _scopedContext = ExecutionContext.Clone(_scriptBlockInfo.ScopeUsage);
+            var executionSessionState = CommandInfo.Module != null ? CommandInfo.Module.SessionState
+                                                                   : ExecutionContext.SessionState;
+            _scopedContext = ExecutionContext.Clone(executionSessionState, _scriptBlockInfo.ScopeUsage);
             _scopedExecutionVisitor = new ExecutionVisitor(_scopedContext, CommandRuntime, false);
         }
 
@@ -95,7 +65,10 @@ namespace Pash.Implementation
             SwitchToOwnScope();
             try
             {
-                BindArguments();
+                MergeParameters();
+                _argumentBinder = new ScriptBlockParameterBinder(_scriptBlockInfo.GetParameters(), ExecutionContext,
+                                                                 _scopedExecutionVisitor);
+                _argumentBinder.BindCommandLineParameters(Parameters);
             }
             finally
             {
@@ -123,17 +96,20 @@ namespace Pash.Implementation
             {
                 _scriptBlockInfo.ScriptBlock.Ast.Visit(_scopedExecutionVisitor);
             }
-            catch (ExitException e)
+            catch (FlowControlException e)
             {
-                if (_fromFile)
+                if (!_fromFile || e is LoopFlowException)
                 {
-                    _exitCode = e.ExitCode;
-                    ExecutionContext.SetVariable("global:LASTEXITCODE", e.ExitCode);
+                    throw; // gets propagated if the script block is not an external script or it's a break/continue
                 }
-                else
+                if (e is ExitException)
                 {
-                    throw;
+                    int exitCode = 0;
+                    LanguagePrimitives.TryConvertTo<int>(((ExitException)e).Argument, out exitCode);
+                    _exitCode = exitCode;
+                    ExecutionContext.SetLastExitCodeVariable(exitCode);
                 }
+                // otherwise (return), we simply stop execution of the script (that's why we're here) and do nothing
             }
             finally //make sure we switch back to the original execution context, no matter what happened
             {
@@ -144,12 +120,72 @@ namespace Pash.Implementation
         public override void EndProcessing()
         {
             // TODO: process end clause. remember to switch scope
-            ExecutionContext.SetVariable("global:?", _exitCode == null || _exitCode == 0);
+            ExecutionContext.SetSuccessVariable(_exitCode == null || _exitCode == 0);
         }
 
         public override string ToString()
         {
             return this._scriptBlockInfo.ToString();
         }
+
+        /// <summary>
+        /// The parse currently adds each parameter without value and each value without parameter name, because
+        /// it doesn't know at parse time whether the value belongs to the paramater or if the parameter is a switch
+        /// parameter and the value is just a positional parameter. As we now know more abot the parameters, we can
+        /// merge all parameters with the upcoming value if it's not a switch parameter
+        /// </summary>
+        void MergeParameters()
+        {
+            // This implementation has quite some differences to the definition for cmdlets.
+            // For example "fun -a -b" can bind "-b" as value to parameter "-a" if "-b" doesn't exist.
+            // This is different to cmdlet behavior.
+            // Also, we will throw an error if we cannot merge a parameter, i.e. if only the name is defined: "fun -a"
+            var definedParameterNames = (from param in _scriptBlockInfo.GetParameters()
+                                         select param.Name.VariablePath.UserPath).ToList();
+            var oldParameters = new Collection<CommandParameter>(new List<CommandParameter>(Parameters));
+            Parameters.Clear();
+
+            int numParams = oldParameters.Count;
+            for (int i = 0; i < numParams; i++)
+            {
+                var current = oldParameters[i];
+                var peek = (i < numParams - 1) ? oldParameters[i + 1] : null;
+
+                // if we have a no name, or a value different to null (or explicitly null), just take it
+                // otherwise it would have been merged before
+                if (String.IsNullOrEmpty(current.Name) ||
+                    current.Value != null ||
+                    current.HasExplicitArgument)
+                {
+                    Parameters.Add(current);
+                    continue;
+                }
+
+                // the current parameter has no argument (and not explicilty set to null), try to merge the next
+                if (peek != null && String.IsNullOrEmpty(peek.Name))
+                {
+                    Parameters.Add(current.Name, peek.Value);
+                    i++; //because of merge
+                }
+                // the next parameter might also be '-b' without "b" being a defined parameter, then we take it
+                // as value
+                else if (peek != null && peek.Value == null && !definedParameterNames.Contains(peek.Name))
+                {
+                    Parameters.Add(current.Name, peek.GetDecoratedName());
+                    i++; //because of merge
+                }
+                else if (definedParameterNames.Contains(current.Name))
+                {
+                    // otherwise we don't have a value for this named parameter, throw an error
+                    throw new ParameterBindingException("Missing argument for parameter '" + current.Name + "'");
+                }
+                else
+                {
+                    // this happens on an named parameter that is not part of the parameter definition
+                    Parameters.Add(current);
+                }
+            }
+        }
+
     }
 }

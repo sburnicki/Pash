@@ -1,10 +1,12 @@
 ﻿// Copyright (C) Pash Contributors. License: GPL/BSD. See https://github.com/Pash-Project/Pash/
 using System.Collections.Generic;
 using System.Management.Automation;
+using System.Management;
 
 namespace Microsoft.PowerShell.Commands
 {
     [Cmdlet("Get", "Location", DefaultParameterSetName = "Location")]
+    [OutputType(typeof(PathInfo), typeof(PathInfoStack))]
     public class GetLocationCommand : DriveMatchingCoreCommandBase
     {
         [Parameter(ParameterSetName = "Location", ValueFromPipelineByPropertyName = true)]
@@ -36,14 +38,10 @@ namespace Microsoft.PowerShell.Commands
                 if ((PSDrive != null) && (PSDrive.Length > 0))
                 {
                     // If location is requested for a specific drive
-                    foreach (string str in PSDrive)
+                    List<PSDriveInfo> list = GetDrives(PSDrive, null, PSProvider, "local");
+                    foreach (PSDriveInfo pdi in list)
                     {
-                        List<PSDriveInfo> list = GetDrivesByName(str, PSProvider);
-
-                        foreach (PSDriveInfo pdi in list)
-                        {
-                            WriteObject(new PathInfo(pdi, pdi.Provider, pdi.CurrentLocation.MakePath(pdi.Name), SessionState));
-                        }
+                        WriteObject(new PathInfo(pdi, new Path(pdi.CurrentLocation).MakePath(pdi.Name), SessionState));
                     }
                 }
                 else if ((PSProvider != null) && (PSProvider.Length > 0))
