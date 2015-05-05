@@ -1,5 +1,5 @@
 #!/bin/bash
-xbuild /p:Configuration=Release
+xbuild ../Pash.proj /p:Configuration=Release
 
 dir="../Source/PashConsole/bin/Release/"
 exe="${dir}/Pash.exe"
