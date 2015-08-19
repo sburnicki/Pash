@@ -62,6 +62,7 @@ namespace ReferenceTests.Language.Operators
         }
 
         [TestCase("[void]'a'")]
+        [TestCase("([void]'a')")]
         [TestCase("[void]1")]
         [TestCase("[void][version]'1.0'")]
         [TestCase("[void]$null")]

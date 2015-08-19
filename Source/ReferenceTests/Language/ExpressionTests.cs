@@ -16,6 +16,16 @@ namespace ReferenceTests.Language
         {
             ExecuteAndCompareTypedResult(cmd, true);
         }
+
+        [TestCase("$null", new object[0])]
+        [TestCase("$null, 'b', $null", new [] {null, "b", null})]
+        [TestCase("[void]'a'", new object[0])]
+        [TestCase("[void]'a', 'b'", new [] {null, "b"})]
+        public void SingleNullValueInParenthesisIsIgnored(string parenExpression, object[] expected) {
+            ExecuteAndCompareTypedResult("(" + parenExpression + ")", expected);
+        }
+
+
     }
 }
 

@@ -21,6 +21,7 @@ using Microsoft.PowerShell.Commands;
 using Extensions.Reflection;
 using System.Security.Policy;
 using System.Security.Cryptography;
+using System.Management.Automation.Internal;
 
 namespace System.Management.Pash.Implementation
 {
@@ -1163,7 +1164,10 @@ namespace System.Management.Pash.Implementation
         public override AstVisitAction VisitParenExpression(ParenExpressionAst parenExpressionAst)
         {
             var value = EvaluateAst(parenExpressionAst.Pipeline);
-            this._pipelineCommandRuntime.WriteObject(value);
+            if (value != null)
+            {
+                _pipelineCommandRuntime.WriteObject(value);
+            }
             return AstVisitAction.SkipChildren;
         }
 
